@@ -4,17 +4,14 @@ SUBDIRS = manager worker net
 
 all: $(SUBDIRS)
 
-manager:
-	$(MAKE) -C net
-	cp net/net.o manager/
-
 net:
 	$(MAKE) -C net
 
-worker:
-	$(MAKE) -C net
+manager: net
+	cp net/net.o manager/
+
+worker: net
 	cp net/net.o worker/
-	
 
 run: all
 	@./manager/manager
