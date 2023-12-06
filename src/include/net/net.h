@@ -7,12 +7,10 @@
 typedef struct
 {
     int                fd;
+    struct sockaddr_in local_saddr;
     struct sockaddr_in dst_saddr;
     uint16_t           dst_port;
     char               dst_dir[INET_ADDRSTRLEN];
-    struct sockaddr_in local_saddr;
-    uint16_t           local_port;
-    char               local_dir[INET_ADDRSTRLEN];
 } *client;
 
 client net_client_create(char *name, char *service);
