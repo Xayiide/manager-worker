@@ -9,9 +9,11 @@ net:
 
 manager: net
 	cp net/net.o manager/
+	$(MAKE) -C manager
 
 worker: net
 	cp net/net.o worker/
+	$(MAKE) -C worker
 
 run: all
 	@./manager/manager

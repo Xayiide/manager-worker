@@ -13,7 +13,7 @@ $(OBJS): $(SRCS)
 	$(CC) $(CFLAGS) -c $(SRCS)
 
 clean:
-	@rm -f $(TRGT) $(OBJS) net_test
+	@rm -f $(OBJS)
 	@echo "clean"
 
 re: clean all
