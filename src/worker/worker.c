@@ -15,6 +15,8 @@ int main(int argc, char *argv[])
     printf("argv[2]: %s\n", argv[2]);
 
     client clnt = net_client_create(argv[1], argv[2]);
+    sleep(100);
+    net_client_delete(&clnt);
 
     return 0;
 }
