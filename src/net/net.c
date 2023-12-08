@@ -13,6 +13,8 @@
 #include <string.h>     /* strncpy, memset                              */
 #include <unistd.h>     /* close                                        */
 #include <sys/time.h>   /* timeval                                      */
+#include <sys/ioctl.h>  /* ioctl                                        */
+#include <errno.h>      /* errno                                        */
 
 #include "inc/net.h"
 
@@ -124,7 +126,7 @@ server net_server_create(char *service, int backlog)
     server              srv;
     struct addrinfo     hints, *res;
     struct sockaddr_in *aux_saddr;
-    char                yes = 1;
+    int                 yes = 1;
     int                 ret_tmp;
 
     srv = malloc(sizeof *(srv));
@@ -156,13 +158,26 @@ server net_server_create(char *service, int backlog)
               net_get_in_addr((struct sockaddr *) res->ai_addr),
               srv->local_dir, sizeof(srv->local_dir));
 
-    srv->fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (srv->fd == -1) {
+    int pedos;
+    pedos = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (pedos == -1) {
         fprintf(stderr, "[%s:%d] socket\n", __FILE__, __LINE__);
         return NULL;
     }
 
-    (void) setsockopt(srv->fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    ret_tmp = setsockopt(pedos, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+    if (ret_tmp < 0) {
+        fprintf(stderr, "[%s:%d] setsockopt\n", __FILE__, __LINE__);
+        //printf("%s\n", explain_setsockopt(pedos, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)));
+        return NULL;
+    }
+
+    /* Non-blocking */
+    ret_tmp = ioctl(srv->fd, FIONBIO, (char *)&yes);
+    if (ret_tmp < 0) {
+        fprintf(stderr, "[%s:%d] ioctl\n", __FILE__, __LINE__);
+        return NULL;
+    }
 
     ret_tmp = bind(srv->fd, (struct sockaddr *) &(srv->local_saddr),
                    sizeof(struct sockaddr_in));
@@ -178,21 +193,41 @@ server net_server_create(char *service, int backlog)
     return srv;
 }
 
-void net_server_accept(server srv, connection conn)
+connection net_server_accept(server srv)
 {
-    socklen_t  sin_size;
+    connection     conn;
+    socklen_t      sin_size;
+    int            tmp_ret;
+    struct timeval timeout = {.tv_sec = 5, .tv_usec = 0};
+
+    conn = malloc(sizeof *(conn));
+    if (conn == NULL) {
+        fprintf(stderr, "[%s:%d] malloc\n", __FILE__, __LINE__);
+        return NULL;
+    }
 
     sin_size = sizeof(conn->saddr);
     conn->fd = accept(srv->fd, (struct sockaddr *) &(conn->saddr), &sin_size);
     if (conn->fd == -1) {
         fprintf(stderr, "[%s:%d] accept\n", __FILE__, __LINE__);
-        return;
+        return NULL;
+    }
+
+
+
+    tmp_ret = setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO,
+                         &timeout, sizeof timeout);
+    if (tmp_ret < 0) {
+        fprintf(stderr, "[%s:%d] setsockopt\n", __FILE__, __LINE__);
+        return NULL;
     }
 
     inet_ntop(conn->saddr.sin_family,
               net_get_in_addr((struct sockaddr *) &(conn->saddr)),
               conn->dir, sizeof(conn->dir));
     conn->port = ntohs(conn->saddr.sin_port);
+
+    return conn;
 }
 
 int net_server_recv(connection conn, uint8_t *buf, size_t len)

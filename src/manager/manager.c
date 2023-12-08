@@ -2,24 +2,43 @@
 #include <stdlib.h>     /* exit, EXIT_FAILURE, atoi */
 #include <unistd.h>     /* sleep                    */
 #include <poll.h>       /* poll */
-#include <errno.h>      /* errno, EWOULDBLOCK */
+#include <errno.h>      /* errno */
 #include <string.h>     /* memset */
 
 #include "net/net.h"
 
-void add_to_pfds(struct pollfd *pfds, int fd, int *fd_count)
-{
-    pfds[*fd_count].fd     = fd;
-    pfds[*fd_count].events = POLLIN;
+/* TODO: Temporalmente globales */
+//int        backlog = 50;
+#define backlog 50
+connection conns[backlog];
 
-    (*fd_count)++;
+void add_to_pfds(struct pollfd *pfds, connection conn, int *fd_count)
+{
+    int found = 0;
+    int index = 0;
+    int fd    = conn->fd;
+
+    /* Busca el primer struct no usado */
+    while (found == 0) {
+        if (pfds[index].fd == -1) {
+            found = 1;
+            pfds[index].fd     = fd;
+            pfds[index].events = POLLIN;
+            conns[index - 1] = conn;
+            (*fd_count)++;
+        }
+        else {
+            index++;
+        }
+    }
 }
 
 void del_from_pfds(struct pollfd *pfds, int i, int *fd_count)
 {
-    /* Copia el último en la posición actual */
-    pfds[i] = pfds[(*fd_count)-1];
-    pfds[(*fd_count)-1].fd = 0;
+    pfds[i].fd       = -1;
+    pfds[i].events   = 0;
+    pfds[i].revents  = 0;
+    conns[i - 1]->fd = -1;
     (*fd_count)--;
 }
 
@@ -27,16 +46,15 @@ void del_from_pfds(struct pollfd *pfds, int i, int *fd_count)
 int main(int argc, char *argv[])
 {
     server        srv;
-    connection    conn;
-    int           backlog = 50;
+    connection    aux_conn;
     struct pollfd pfds[backlog + 1];
-    int           fd_count = 0, new_fd;
+    int           fd_count = 0;
+    int i;
 
+    /* Inicializa pfds a un estado correcto: los fds a un valor inválido */
     memset(pfds, 0, sizeof(pfds));
-    conn = malloc(sizeof *(conn));
-    if (conn == NULL) {
-        fprintf(stderr, "MALLOC\n");
-        return -1;
+    for (i = 0; i < backlog + 1; i++) {
+        pfds[i].fd = -1;
     }
 
     printf("[Manager]\n");
@@ -70,16 +88,20 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        for (int i = 0; i < fd_count; i++) {
+        for (i = 0; i < fd_count; i++) {
             if (pfds[i].revents & POLLIN) { /* Este fd tiene lectura lista */
                 if (pfds[i].fd == srv->fd) { /* Es el servidor */
-                    net_server_accept(srv, conn);
-                    new_fd = conn->fd;
-                    pfds[fd_count].fd     = new_fd;
-                    pfds[fd_count].events = POLLIN;
-                    fd_count++;
-                    printf("Conexión desde %s:%d\n",
-                               conn->dir, conn->port);
+                    if ((fd_count - 1) < backlog) {
+                        aux_conn = net_server_accept(srv);
+                        add_to_pfds(pfds, aux_conn, &fd_count);
+                        printf("Conexión desde %s:%d\n",
+                                   aux_conn->dir, aux_conn->port);
+                    }
+                    else {
+                        printf("Máximo número de conexiones alcanzado\n");
+                        printf(" backlog: %d\n", backlog);
+                        printf(" fd_count: %d\n", fd_count);
+                    }
                 }
                 else { /* Es el cliente */
                     char buf[128];
@@ -87,14 +109,16 @@ int main(int argc, char *argv[])
                     int sender_fd = pfds[i].fd;
 
                     if (nbytes <= 0) { /* Error o conexión cerrada */
-                        if (nbytes == 0) /* Conexión cerrada */
+                        if (nbytes == 0) { /* Conexión cerrada */
                             printf("Socket %d cerró\n", sender_fd);
-                        else
-                            fprintf(stderr, "recv\n");
+                        }
+                        else {
+                            fprintf(stderr, "recv: ");
+                            fprintf(stderr, "%s\n", strerror(errno));
+                        }
 
                         close(pfds[i].fd);
-                        pfds[i].fd = -1;
-                        //del_from_conns(conns, i-1, &conns_count);
+                        del_from_pfds(pfds, i, &fd_count);
                     }
                     else {
                         printf("Recibido: %s\n", buf);
@@ -105,7 +129,9 @@ int main(int argc, char *argv[])
 
     }
 
-    net_conn_delete(&conn);
+    for (i = 0; i < backlog; i++)
+        net_conn_delete(&conns[i]);
+    net_conn_delete(&aux_conn);
     net_server_delete(&srv);
 
     return 0;

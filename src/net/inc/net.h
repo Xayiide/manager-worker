@@ -42,7 +42,7 @@ void net_conn_delete(connection *conn);
 /* FUNCIONES DE SERVIDOR */
 server net_server_create(char *service, int backlog);
 
-void net_server_accept(server srv, connection conn);
+connection net_server_accept(server srv);
 
 int net_server_recv(connection conn, uint8_t *buf, size_t len);
 

@@ -12,7 +12,7 @@ all: $(TRGT)
 
 $(TRGT): $(SRCS) net.o
 	$(CC) $(CFLAGS) $(IFLAGS) $(SRCS) -c
-	$(CC) $(CFLAGS) $(OBJS) -o $@
+	$(CC) $(CFLAGS) $(OBJS) -lexplain -o $@
 
 net.o:
 	$(MAKE) -C ../net
