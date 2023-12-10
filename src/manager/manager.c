@@ -8,9 +8,9 @@
 #include "net/net.h"
 
 /* TODO: Temporalmente globales */
-//int        backlog = 50;
-#define backlog 50
-connection conns[backlog];
+//int        BACKLOG = 50;
+#define BACKLOG 50
+connection conns[BACKLOG];
 
 void add_to_pfds(struct pollfd *pfds, connection conn, int *fd_count)
 {
@@ -47,13 +47,14 @@ int main(int argc, char *argv[])
 {
     server        srv;
     connection    aux_conn;
-    struct pollfd pfds[backlog + 1];
+    struct pollfd pfds[BACKLOG + 1];
     int           fd_count = 0;
+    int           run_srv  = 1;
     int i;
 
     /* Inicializa pfds a un estado correcto: los fds a un valor inválido */
     memset(pfds, 0, sizeof(pfds));
-    for (i = 0; i < backlog + 1; i++) {
+    for (i = 0; i < BACKLOG + 1; i++) {
         pfds[i].fd = -1;
     }
 
@@ -64,7 +65,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    srv = net_server_create(argv[1], backlog);
+    srv = net_server_create(argv[1], BACKLOG);
     if (srv == NULL) {
         fprintf(stderr, "No se ha podido crear el servidor\n");
         return 1;
@@ -75,7 +76,7 @@ int main(int argc, char *argv[])
     pfds[0].fd     = srv->fd;
     pfds[0].events = POLLIN;
 
-    while (1) {
+    while (run_srv == 1) {
         int poll_count = poll(pfds, fd_count, -1);
 
         if (poll_count < 0) {
@@ -89,47 +90,56 @@ int main(int argc, char *argv[])
         }
 
         for (i = 0; i < fd_count; i++) {
-            if (pfds[i].revents & POLLIN) { /* Este fd tiene lectura lista */
-                if (pfds[i].fd == srv->fd) { /* Es el servidor */
-                    if ((fd_count - 1) < backlog) {
-                        aux_conn = net_server_accept(srv);
-                        add_to_pfds(pfds, aux_conn, &fd_count);
-                        printf("Conexión desde %s:%d\n",
-                                   aux_conn->dir, aux_conn->port);
+            if (pfds[i].revents == 0)
+                continue;
+            if (pfds[i].revents != POLLIN) {
+                fprintf(stderr, "Error. Revents: %d\n", pfds[i].revents);
+                run_srv = 0;
+                break;
+            }
+            if (pfds[i].fd == srv->fd) { /* Es el servidor */
+                if ((fd_count - 1) < BACKLOG) {
+                    aux_conn = net_server_accept(srv);
+                    if (aux_conn == NULL) {
+                        fprintf(stderr, "Error: net_server_accept\n");
+                        return 1;
                     }
-                    else {
-                        printf("Máximo número de conexiones alcanzado\n");
-                        printf(" backlog: %d\n", backlog);
-                        printf(" fd_count: %d\n", fd_count);
-                    }
+                    add_to_pfds(pfds, aux_conn, &fd_count);
+                    printf("Conexión desde %s:%d\n",
+                               aux_conn->dir, aux_conn->port);
                 }
-                else { /* Es el cliente */
-                    char buf[128];
-                    int nbytes    = recv(pfds[i].fd, buf, sizeof buf, 0);
-                    int sender_fd = pfds[i].fd;
+                else {
+                    printf("Máximo número de conexiones alcanzado\n");
+                    printf(" BACKLOG: %d\n", BACKLOG);
+                    printf(" fd_count: %d\n", fd_count);
+                }
+            }
+            else { /* Es el cliente */
+                char buf[128];
+                int nbytes    = recv(pfds[i].fd, buf, sizeof buf, 0);
+                int sender_fd = pfds[i].fd;
 
-                    if (nbytes <= 0) { /* Error o conexión cerrada */
-                        if (nbytes == 0) { /* Conexión cerrada */
-                            printf("Socket %d cerró\n", sender_fd);
-                        }
-                        else {
-                            fprintf(stderr, "recv: ");
-                            fprintf(stderr, "%s\n", strerror(errno));
-                        }
-
-                        close(pfds[i].fd);
-                        del_from_pfds(pfds, i, &fd_count);
+                if (nbytes <= 0) { /* Error o conexión cerrada */
+                    if (nbytes == 0) { /* Conexión cerrada */
+                        printf("Socket %d cerró\n", sender_fd);
                     }
                     else {
-                        printf("Recibido: %s\n", buf);
+                        fprintf(stderr, "recv: ");
+                        fprintf(stderr, "%s\n", strerror(errno));
                     }
+
+                    close(pfds[i].fd);
+                    del_from_pfds(pfds, i, &fd_count);
+                }
+                else {
+                    printf("Recibido: %s\n", buf);
                 }
             }
         }
 
     }
 
-    for (i = 0; i < backlog; i++)
+    for (i = 0; i < BACKLOG; i++)
         net_conn_delete(&conns[i]);
     net_conn_delete(&aux_conn);
     net_server_delete(&srv);

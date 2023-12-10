@@ -158,14 +158,13 @@ server net_server_create(char *service, int backlog)
               net_get_in_addr((struct sockaddr *) res->ai_addr),
               srv->local_dir, sizeof(srv->local_dir));
 
-    int pedos;
-    pedos = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (pedos == -1) {
+    srv->fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (srv->fd == -1) {
         fprintf(stderr, "[%s:%d] socket\n", __FILE__, __LINE__);
         return NULL;
     }
 
-    ret_tmp = setsockopt(pedos, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+    ret_tmp = setsockopt(srv->fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
     if (ret_tmp < 0) {
         fprintf(stderr, "[%s:%d] setsockopt\n", __FILE__, __LINE__);
         //printf("%s\n", explain_setsockopt(pedos, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)));
@@ -185,7 +184,10 @@ server net_server_create(char *service, int backlog)
         (void) listen(srv->fd, backlog);
     }
     else {
+        fprintf(stderr, "[%s:%d] bind\n", __FILE__, __LINE__);
+        fprintf(stderr, "errno: %s\n", strerror(errno));;
         close(srv->fd);
+        return NULL;
     }
 
     freeaddrinfo(res);
