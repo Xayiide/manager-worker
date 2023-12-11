@@ -1,149 +1,155 @@
 #include <stdio.h>
-#include <stdlib.h>     /* exit, EXIT_FAILURE, atoi */
-#include <unistd.h>     /* sleep                    */
-#include <poll.h>       /* poll */
-#include <errno.h>      /* errno */
-#include <string.h>     /* memset */
+#include <stdlib.h>      /* atoi   */
+#include <string.h>      /* memset */
+#include <unistd.h>      /* close  */
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <poll.h>
 
 #include "net/net.h"
 
-/* TODO: Temporalmente globales */
-//int        BACKLOG = 50;
-#define BACKLOG 50
-connection conns[BACKLOG];
-
-void add_to_pfds(struct pollfd *pfds, connection conn, int *fd_count)
-{
-    int found = 0;
-    int index = 0;
-    int fd    = conn->fd;
-
-    /* Busca el primer struct no usado */
-    while (found == 0) {
-        if (pfds[index].fd == -1) {
-            found = 1;
-            pfds[index].fd     = fd;
-            pfds[index].events = POLLIN;
-            conns[index - 1] = conn;
-            (*fd_count)++;
-        }
-        else {
-            index++;
-        }
-    }
-}
-
-void del_from_pfds(struct pollfd *pfds, int i, int *fd_count)
-{
-    pfds[i].fd       = -1;
-    pfds[i].events   = 0;
-    pfds[i].revents  = 0;
-    conns[i - 1]->fd = -1;
-    (*fd_count)--;
-}
-
+#define MAX_CLIENTS 50
+#define LISTENQ     5
+#define BUF_SIZE    128
 
 int main(int argc, char *argv[])
 {
-    server        srv;
-    connection    aux_conn;
-    struct pollfd pfds[BACKLOG + 1];
-    int           fd_count = 0;
-    int           run_srv  = 1;
-    int i;
+    struct sockaddr_in listenaddr;
+    int                listenfd;
 
-    /* Inicializa pfds a un estado correcto: los fds a un valor inválido */
-    memset(pfds, 0, sizeof(pfds));
-    for (i = 0; i < BACKLOG + 1; i++) {
+    struct sockaddr_in remoteaddr;
+    socklen_t          addrlen;
+    int                newfd, port;
+
+    struct pollfd      pfds[MAX_CLIENTS];
+    int                fd_count = 0;
+    int                poll_count;
+
+    char               buf[BUF_SIZE];
+    int                i, nbytes;
+
+    server             srv; // = malloc(sizeof *(srv));
+
+
+    if (argc != 2) {
+        fprintf(stderr, "usage: %s <port>\n", argv[0]);
+        return 1;
+    }
+
+    port = atoi(argv[1]);
+    if (port <= 0 || port > 65535) {
+        fprintf(stderr, "Invalid port number %d\n", port);
+        return 1;
+    }
+
+    //srv->fd = socket(AF_INET, SOCK_STREAM, 0);
+    //if (srv->fd < 0) {
+    //    fprintf(stderr, "socket\n");
+    //    return 1;
+    //}
+
+    //listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    //if (listenfd < 0) {
+    //    fprintf(stderr, "socket\n");
+    //    return 1;
+    //}
+    srv = net_server_create(argv[1], LISTENQ);
+    printf("Listening socket: %d\n", srv->fd);
+
+    //memset(&(srv->local_saddr), 0, sizeof(srv->fd));
+    //srv->local_saddr.sin_family      = AF_INET;
+    //srv->local_saddr.sin_addr.s_addr = INADDR_ANY;
+    //srv->local_saddr.sin_port        = htons(port);
+
+    //if (bind(srv->fd, (struct sockaddr *) &(srv->local_saddr),
+    //         sizeof(srv->local_saddr)) < 0) {
+    //    perror("bind");
+    //    return 1;
+    //}
+
+    //if (listen(srv->fd, LISTENQ) < 0) {
+    //    fprintf(stderr, "listen\n");
+    //    return 1;
+    //}
+    
+    for (i = 1; i < MAX_CLIENTS; i++) {
         pfds[i].fd = -1;
     }
 
-    printf("[Manager]\n");
-
-    if (argc != 2) {
-        fprintf(stderr, "Uso: %s <puerto>\n", argv[0]);
-        return 1;
-    }
-
-    srv = net_server_create(argv[1], BACKLOG);
-    if (srv == NULL) {
-        fprintf(stderr, "No se ha podido crear el servidor\n");
-        return 1;
-    }
-    printf("Server listening on %s:%d\n", srv->local_dir, srv->local_port);
-
-    fd_count++;
     pfds[0].fd     = srv->fd;
-    pfds[0].events = POLLIN;
+    pfds[0].events = POLLRDNORM;
 
-    while (run_srv == 1) {
-        int poll_count = poll(pfds, fd_count, -1);
+    while (1) {
+        poll_count = poll(pfds, fd_count + 1, -1);
 
-        if (poll_count < 0) {
-            fprintf(stderr, "poll\n");
-            return 1;
-        }
+        if (poll_count <= 0)
+            continue;
 
-        if (poll_count == 0) {
-            fprintf(stderr, "poll timeout\n");
-            return 1;
-        }
+        if (pfds[0].revents & POLLRDNORM) {
+            addrlen = sizeof(remoteaddr);
+            
+            newfd = accept(srv->fd, (struct sockaddr *) &remoteaddr, &addrlen);
+            if (newfd < 0) {
+                fprintf(stderr, "accept\n");
+                return 1;
+            }
 
-        for (i = 0; i < fd_count; i++) {
-            if (pfds[i].revents == 0)
+            printf("New connection %d from %s:%hu\n", newfd,
+                    inet_ntoa(remoteaddr.sin_addr),
+                    ntohs(remoteaddr.sin_port));
+
+            for (i = 0; i < MAX_CLIENTS; i++) {
+                if (pfds[i].fd < 0) {
+                    pfds[i].fd = newfd;
+                    break;
+                }
+            }
+
+            if (i == MAX_CLIENTS) {
+                fprintf(stderr, "Demasiados clientes [%d]\n", MAX_CLIENTS);
+                close(newfd);
+            }
+
+            pfds[i].events = POLLRDNORM;
+
+            if (i > fd_count)
+                fd_count = i;
+
+            if (--poll_count <= 0)
                 continue;
-            if (pfds[i].revents != POLLIN) {
-                fprintf(stderr, "Error. Revents: %d\n", pfds[i].revents);
-                run_srv = 0;
-                break;
-            }
-            if (pfds[i].fd == srv->fd) { /* Es el servidor */
-                if ((fd_count - 1) < BACKLOG) {
-                    aux_conn = net_server_accept(srv);
-                    if (aux_conn == NULL) {
-                        fprintf(stderr, "Error: net_server_accept\n");
-                        return 1;
-                    }
-                    add_to_pfds(pfds, aux_conn, &fd_count);
-                    printf("Conexión desde %s:%d\n",
-                               aux_conn->dir, aux_conn->port);
-                }
-                else {
-                    printf("Máximo número de conexiones alcanzado\n");
-                    printf(" BACKLOG: %d\n", BACKLOG);
-                    printf(" fd_count: %d\n", fd_count);
-                }
-            }
-            else { /* Es el cliente */
-                char buf[128];
-                int nbytes    = recv(pfds[i].fd, buf, sizeof buf, 0);
-                int sender_fd = pfds[i].fd;
-
-                if (nbytes <= 0) { /* Error o conexión cerrada */
-                    if (nbytes == 0) { /* Conexión cerrada */
-                        printf("Socket %d cerró\n", sender_fd);
-                    }
-                    else {
-                        fprintf(stderr, "recv: ");
-                        fprintf(stderr, "%s\n", strerror(errno));
-                    }
-
-                    close(pfds[i].fd);
-                    del_from_pfds(pfds, i, &fd_count);
-                }
-                else {
-                    printf("Recibido: %s\n", buf);
-                }
-            }
         }
 
+        for (i = 1; i <= fd_count; i++) {
+            newfd = pfds[i].fd;
+            if (newfd < 0) /* Ignora fds a -1 */
+                continue;
+
+            if (pfds[i].revents & (POLLRDNORM | POLLERR)) {
+                nbytes = recv(newfd, buf, BUF_SIZE, 0);
+
+                if (nbytes <= 0) {
+                    if (nbytes < 0)
+                        perror("read");
+                    else if (nbytes == 0)
+                        printf("Close socket %d\n", newfd);
+                    close(newfd);
+                    pfds[i].fd = -1;
+                }
+                else {
+                    printf("Read %d bytes from socket %d\n", nbytes, newfd);
+                }
+
+
+                if (--poll_count <= 0)
+                    break;
+            }
+        }
     }
 
-    for (i = 0; i < BACKLOG; i++)
-        net_conn_delete(&conns[i]);
-    net_conn_delete(&aux_conn);
-    net_server_delete(&srv);
-
+    free(srv);
+    close(srv->fd);
+    
     return 0;
 }
-
