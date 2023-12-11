@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <poll.h>
 
+#include <time.h> /* BORRAR: timeval */
+
 #include "net/net.h"
 
 #define MAX_CLIENTS 50
@@ -21,7 +23,7 @@ int main(int argc, char *argv[])
 
     struct sockaddr_in remoteaddr;
     socklen_t          addrlen;
-    int                newfd, port;
+    int                auxfd, port;
 
     struct pollfd      pfds[MAX_CLIENTS];
     int                fd_count = 0;
@@ -31,6 +33,7 @@ int main(int argc, char *argv[])
     int                i, nbytes;
 
     server             srv; // = malloc(sizeof *(srv));
+    connection         conn; // = malloc(sizeof *(conn));
 
 
     if (argc != 2) {
@@ -88,28 +91,33 @@ int main(int argc, char *argv[])
             continue;
 
         if (pfds[0].revents & POLLRDNORM) {
-            addrlen = sizeof(remoteaddr);
-            
-            newfd = accept(srv->fd, (struct sockaddr *) &remoteaddr, &addrlen);
-            if (newfd < 0) {
-                fprintf(stderr, "accept\n");
-                return 1;
-            }
+            conn = net_server_accept(srv);
+            //addrlen = sizeof(conn->saddr);
+            //conn->fd = accept(srv->fd, (struct sockaddr *) &(conn->saddr), &addrlen);
+            //// auxfd = accept(srv->fd, (struct sockaddr *) &remoteaddr, &addrlen);
+            //if (conn->fd < 0) {
+            //    fprintf(stderr, "accept\n");
+            //    return 1;
+            //}
 
-            printf("New connection %d from %s:%hu\n", newfd,
-                    inet_ntoa(remoteaddr.sin_addr),
-                    ntohs(remoteaddr.sin_port));
+            //struct timeval timeout = {.tv_sec = 5, .tv_usec = 0};
+            //setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO,
+            //             &timeout, sizeof timeout);
+
+            printf("New connection %d from %s:%hu\n", conn->fd,
+                    inet_ntoa(conn->saddr.sin_addr),
+                    ntohs(conn->saddr.sin_port));
 
             for (i = 0; i < MAX_CLIENTS; i++) {
                 if (pfds[i].fd < 0) {
-                    pfds[i].fd = newfd;
+                    pfds[i].fd = conn->fd;
                     break;
                 }
             }
 
             if (i == MAX_CLIENTS) {
                 fprintf(stderr, "Demasiados clientes [%d]\n", MAX_CLIENTS);
-                close(newfd);
+                close(conn->fd);
             }
 
             pfds[i].events = POLLRDNORM;
@@ -122,23 +130,23 @@ int main(int argc, char *argv[])
         }
 
         for (i = 1; i <= fd_count; i++) {
-            newfd = pfds[i].fd;
-            if (newfd < 0) /* Ignora fds a -1 */
+            auxfd = pfds[i].fd;
+            if (auxfd < 0) /* Ignora fds a -1 */
                 continue;
 
             if (pfds[i].revents & (POLLRDNORM | POLLERR)) {
-                nbytes = recv(newfd, buf, BUF_SIZE, 0);
+                nbytes = recv(auxfd, buf, BUF_SIZE, 0);
 
                 if (nbytes <= 0) {
                     if (nbytes < 0)
                         perror("read");
                     else if (nbytes == 0)
-                        printf("Close socket %d\n", newfd);
-                    close(newfd);
+                        printf("Close socket %d\n", auxfd);
+                    close(auxfd);
                     pfds[i].fd = -1;
                 }
                 else {
-                    printf("Read %d bytes from socket %d\n", nbytes, newfd);
+                    printf("Read %d bytes from socket %d\n", nbytes, auxfd);
                 }
 
 
@@ -148,8 +156,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    free(srv);
-    close(srv->fd);
+    net_conn_delete(&conn);
+    net_server_delete(&srv);
     
     return 0;
 }
