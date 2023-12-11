@@ -18,23 +18,16 @@
 
 int main(int argc, char *argv[])
 {
-    struct sockaddr_in listenaddr;
-    int                listenfd;
+    struct pollfd      pfds[MAX_CLIENTS]; /* storing the server fd (pfds[0]) */
+    int                fd_highest = 0;
 
-    struct sockaddr_in remoteaddr;
-    socklen_t          addrlen;
-    int                auxfd, port;
-
-    struct pollfd      pfds[MAX_CLIENTS];
-    int                fd_count = 0;
     int                poll_count;
-
     char               buf[BUF_SIZE];
     int                i, nbytes;
+    int                aux_fd, port;
 
-    server             srv; // = malloc(sizeof *(srv));
-    connection         conn; // = malloc(sizeof *(conn));
-
+    server             srv;
+    connection         conn;
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s <port>\n", argv[0]);
@@ -47,66 +40,26 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    //srv->fd = socket(AF_INET, SOCK_STREAM, 0);
-    //if (srv->fd < 0) {
-    //    fprintf(stderr, "socket\n");
-    //    return 1;
-    //}
-
-    //listenfd = socket(AF_INET, SOCK_STREAM, 0);
-    //if (listenfd < 0) {
-    //    fprintf(stderr, "socket\n");
-    //    return 1;
-    //}
     srv = net_server_create(argv[1], LISTENQ);
     printf("Listening socket: %d\n", srv->fd);
-
-    //memset(&(srv->local_saddr), 0, sizeof(srv->fd));
-    //srv->local_saddr.sin_family      = AF_INET;
-    //srv->local_saddr.sin_addr.s_addr = INADDR_ANY;
-    //srv->local_saddr.sin_port        = htons(port);
-
-    //if (bind(srv->fd, (struct sockaddr *) &(srv->local_saddr),
-    //         sizeof(srv->local_saddr)) < 0) {
-    //    perror("bind");
-    //    return 1;
-    //}
-
-    //if (listen(srv->fd, LISTENQ) < 0) {
-    //    fprintf(stderr, "listen\n");
-    //    return 1;
-    //}
     
     for (i = 1; i < MAX_CLIENTS; i++) {
         pfds[i].fd = -1;
     }
 
     pfds[0].fd     = srv->fd;
-    pfds[0].events = POLLRDNORM;
+    pfds[0].events = POLLIN;
 
     while (1) {
-        poll_count = poll(pfds, fd_count + 1, -1);
+        poll_count = poll(pfds, fd_highest + 1, -1);
 
         if (poll_count <= 0)
             continue;
 
-        if (pfds[0].revents & POLLRDNORM) {
+        if (pfds[0].revents & POLLIN) {
             conn = net_server_accept(srv);
-            //addrlen = sizeof(conn->saddr);
-            //conn->fd = accept(srv->fd, (struct sockaddr *) &(conn->saddr), &addrlen);
-            //// auxfd = accept(srv->fd, (struct sockaddr *) &remoteaddr, &addrlen);
-            //if (conn->fd < 0) {
-            //    fprintf(stderr, "accept\n");
-            //    return 1;
-            //}
-
-            //struct timeval timeout = {.tv_sec = 5, .tv_usec = 0};
-            //setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO,
-            //             &timeout, sizeof timeout);
-
-            printf("New connection %d from %s:%hu\n", conn->fd,
-                    inet_ntoa(conn->saddr.sin_addr),
-                    ntohs(conn->saddr.sin_port));
+            printf("New connection %d from %s:%hu\n",
+                    conn->fd, conn->dir, conn->port);
 
             for (i = 0; i < MAX_CLIENTS; i++) {
                 if (pfds[i].fd < 0) {
@@ -120,43 +73,45 @@ int main(int argc, char *argv[])
                 close(conn->fd);
             }
 
-            pfds[i].events = POLLRDNORM;
+            pfds[i].events = POLLIN;
 
-            if (i > fd_count)
-                fd_count = i;
+            if (i > fd_highest)
+                fd_highest = i;
 
-            if (--poll_count <= 0)
+            poll_count--;
+            if (poll_count <= 0)
                 continue;
         }
 
-        for (i = 1; i <= fd_count; i++) {
-            auxfd = pfds[i].fd;
-            if (auxfd < 0) /* Ignora fds a -1 */
+        for (i = 1; i <= fd_highest; i++) {
+            aux_fd = pfds[i].fd;
+            if (aux_fd < 0) /* Ignora fds a -1 */
                 continue;
 
-            if (pfds[i].revents & (POLLRDNORM | POLLERR)) {
-                nbytes = recv(auxfd, buf, BUF_SIZE, 0);
+            if (pfds[i].revents & (POLLIN | POLLERR)) {
+                nbytes = recv(aux_fd, buf, BUF_SIZE, 0);
 
                 if (nbytes <= 0) {
                     if (nbytes < 0)
                         perror("read");
                     else if (nbytes == 0)
-                        printf("Close socket %d\n", auxfd);
-                    close(auxfd);
+                        printf("Close socket %d\n", aux_fd);
+                    close(aux_fd);
                     pfds[i].fd = -1;
                 }
                 else {
-                    printf("Read %d bytes from socket %d\n", nbytes, auxfd);
+                    /* Handle clients */
+                    printf("Read %d bytes from socket %d\n", nbytes, aux_fd);
                 }
 
 
-                if (--poll_count <= 0)
+                poll_count--;
+                if (poll_count <= 0)
                     break;
             }
         }
     }
 
-    net_conn_delete(&conn);
     net_server_delete(&srv);
     
     return 0;

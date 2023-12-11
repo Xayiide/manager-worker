@@ -1,3 +1,10 @@
+# Vim intermediary files
+*.swp
+
+# Ejecutables
+src/manager/manager
+src/worker/worker
+
 # Prerequisites
 *.d
 
