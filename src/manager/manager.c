@@ -1,20 +1,73 @@
-#include <stdio.h>
-#include <stdlib.h>      /* atoi   */
+#include <stdio.h>       /* perror */
+#include <stdlib.h>      /* atoi, exit, EXIT_FAILURE   */
 #include <string.h>      /* memset */
 #include <unistd.h>      /* close  */
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <poll.h>
-
-#include <time.h> /* BORRAR: timeval */
+#include <sys/socket.h>  /* recv   */
+#include <poll.h>        /* poll   */
+#include <stddef.h>      /* size_t */
+#include <curl/curl.h>
 
 #include "net/net.h"
 
 #define MAX_CLIENTS 50
 #define LISTENQ     5
 #define BUF_SIZE    128
+
+typedef struct {
+    char   *data;
+    size_t  size;
+} curl_data;
+
+
+size_t manager_get_data(void *buf, size_t itemsize, size_t nitems, void *userdata)
+{
+    size_t     chunksize;
+    curl_data *curldata;
+    char      *ptr;
+
+    chunksize = itemsize * nitems;
+    curldata  = (curl_data *) userdata;
+
+    /* +1 for NULL terminator */
+    ptr = realloc(curldata->data, curldata->size + chunksize + 1);
+    if (ptr == NULL) {
+        fprintf(stderr, "realloc\n");
+        return CURLE_WRITE_ERROR;
+    }
+
+    curldata->data = ptr;
+    /* Append new data to previous data */
+    memcpy(&(curldata->data[curldata->size]), buf, chunksize);
+    curldata->size += chunksize;
+    curldata->data[curldata->size] = 0; /* null-terminator */
+
+    return chunksize;
+}
+
+void manager_download_file(char *url, curl_data *curldata)
+{
+    CURL     *curl;
+    CURLcode  result;
+
+    curl_global_init(CURL_GLOBAL_ALL);
+    curl = curl_easy_init();
+    if (curl == NULL) {
+        fprintf(stderr, "curl_easy_init\n");
+        exit(EXIT_FAILURE);
+    }
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, manager_get_data);
+    /* Manda el struct curldata como argumento userdata a manager_get_data */
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) curldata);
+
+    result = curl_easy_perform(curl);
+    if (result != CURLE_OK) {
+        fprintf(stderr, "CURL problem: %s\n", curl_easy_strerror(result));
+        exit(EXIT_FAILURE);
+    }
+
+    curl_easy_cleanup(curl);
+}
 
 int main(int argc, char *argv[])
 {
@@ -29,18 +82,26 @@ int main(int argc, char *argv[])
     server             srv;
     connection         conn;
 
-    if (argc != 2) {
-        fprintf(stderr, "usage: %s <port>\n", argv[0]);
+    curl_data curldata;
+    curldata.data = malloc(1);
+    curldata.size = 0;
+
+    if (argc != 3) {
+        fprintf(stderr, "usage: %s <URL to file> <port>\n", argv[0]);
         return 1;
     }
 
-    port = atoi(argv[1]);
+    manager_download_file(argv[1], &curldata);
+
+    printf("file size: %zu bytes\n", curldata.size);
+
+    port = atoi(argv[2]);
     if (port <= 0 || port > 65535) {
         fprintf(stderr, "Invalid port number %d\n", port);
         return 1;
     }
 
-    srv = net_server_create(argv[1], LISTENQ);
+    srv = net_server_create(argv[2], LISTENQ);
     printf("Listening socket: %d\n", srv->fd);
     
     for (i = 1; i < MAX_CLIENTS; i++) {
@@ -112,6 +173,8 @@ int main(int argc, char *argv[])
         }
     }
 
+    free(&curldata);
+    net_conn_delete(&conn);
     net_server_delete(&srv);
     
     return 0;
