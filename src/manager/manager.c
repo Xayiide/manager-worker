@@ -12,12 +12,50 @@
 #define MAX_CLIENTS 50
 #define LISTENQ     5
 #define BUF_SIZE    128
+#define NUM_FILES   100
 
 typedef struct {
     char   *data;
     size_t  size;
 } curl_data;
 
+int manager_distribute_work(int   fd,           int *files_status,
+                            char *files_todo[], int *files_done)
+{
+    int   index   = 0;
+    int   found   = 0;
+    int   ret_tmp = 0;
+    char *file;
+
+    if (*files_done == NUM_FILES) {
+        printf("No work to distribute, everything's done\n");
+        return -1;
+    }
+
+    while (found == 0 && index < NUM_FILES) {
+        if (files_status[index] == 0)
+            found = 1;
+        else
+            index++;
+    }
+
+    if (found == 0) {
+        fprintf(stderr, "Error: no files available but files_done=%d\n",
+                *files_done);
+        return -1;
+    }
+
+    file = files_todo[index];
+    ret_tmp = send(fd, file, strlen(file), 0);
+    if (ret_tmp == -1) {
+        fprintf(stderr, "Error sending file %s to fd %d\n", file, fd);
+        return -1;
+    }
+
+    files_status[index] = fd;
+
+    return index;
+}
 
 size_t manager_get_data(void *buf, size_t itemsize, size_t nitems, void *userdata)
 {
@@ -86,12 +124,38 @@ int main(int argc, char *argv[])
     curldata.data = malloc(1);
     curldata.size = 0;
 
+    /* Guarda las 100 urls de los ficheros csv que se quieren repartir */
+    char *files_todo[NUM_FILES];
+    /* Guarda el estado de procesamiento de cada elemento de files_todo.
+     * files_status[i] puede tener 3 valores:
+     *  · > 0: fd del socket al que se ha mandado files_todo[i] para procesar.
+     *  · = 0: files_todo[i] todavía no ha sido repartido.
+     *  · < 0: -fd del socket al que se mandó files_todo[i] y procesó. */
+    int   files_status[NUM_FILES] = { 0 };
+    int   files_done = 0;
+    char *pch        = NULL;
+
+
+
+
     if (argc != 3) {
         fprintf(stderr, "usage: %s <URL to file> <port>\n", argv[0]);
         return 1;
     }
 
     manager_download_file(argv[1], &curldata);
+
+    i = 0;
+    pch = strtok(curldata.data, "\n"); /* pch -> null-terminated */
+    while (pch != NULL) {
+        files_todo[i] = malloc(strlen(pch));
+        strncpy(files_todo[i], pch, strlen(pch) + 1);
+        pch = strtok(NULL, "\n");
+        i++;
+    }
+
+    for (i = 0; i < NUM_FILES; i++)
+        printf("%d: %s\n", i, files_todo[i]);
 
     printf("file size: %zu bytes\n", curldata.size);
 
@@ -139,6 +203,9 @@ int main(int argc, char *argv[])
             if (i > fd_highest)
                 fd_highest = i;
 
+            manager_distribute_work(conn->fd, files_status,
+                                    files_todo, &files_done);
+
             poll_count--;
             if (poll_count <= 0)
                 continue;
@@ -172,6 +239,15 @@ int main(int argc, char *argv[])
             }
         }
     }
+
+    /* for i in files_todo:
+     *     if (files_status[i] == 0)
+     *         error: todavía procesándose
+     *     if (files_status[i] > 0)
+     *         error: no repartido
+     *     if (files_status[i] < 0)
+     *         free(files_todo[i])
+     */
 
     free(&curldata);
     net_conn_delete(&conn);
