@@ -1,6 +1,7 @@
 CC     = gcc
 CFLAGS = -std=gnu99 -Wall -Wextra -Wpedantic -O0 -g3 
 IFLAGS = -I../include
+LFLAGS = -lcurl
 
 TRGT = worker
 SRCS = worker.c
@@ -12,7 +13,7 @@ all: $(TRGT)
 
 $(TRGT): $(SRCS) net.o
 	$(CC) $(CFLAGS) $(IFLAGS) $(SRCS) -c
-	$(CC) $(CFLAGS) $(OBJS) -o $@
+	$(CC) $(CFLAGS) $(OBJS) $(LFLAGS) -o $@
 
 net.o:
 	$(MAKE) -C ../net

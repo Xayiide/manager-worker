@@ -11,7 +11,6 @@
 
 #define MAX_CLIENTS 50
 #define LISTENQ     5
-#define BUF_SIZE    128
 #define NUM_FILES   100
 
 typedef struct {
@@ -87,7 +86,8 @@ void manager_download_file(char *url, curl_data *curldata)
     CURL     *curl;
     CURLcode  result;
 
-    curl_global_init(CURL_GLOBAL_ALL);
+    /*TODO: Hacerlo sólo una vez */
+    //curl_global_init(CURL_GLOBAL_ALL);
     curl = curl_easy_init();
     if (curl == NULL) {
         fprintf(stderr, "curl_easy_init\n");
@@ -109,16 +109,16 @@ void manager_download_file(char *url, curl_data *curldata)
 
 int main(int argc, char *argv[])
 {
-    struct pollfd      pfds[MAX_CLIENTS]; /* storing the server fd (pfds[0]) */
-    int                fd_highest = 0;
+    struct pollfd pfds[MAX_CLIENTS]; /* storing the server fd (pfds[0]) */
+    int           fd_highest = 0;
 
-    int                poll_count;
-    char               buf[BUF_SIZE];
-    int                i, nbytes;
-    int                aux_fd, port;
+    int           poll_count;
+    int           buf;
+    int           i, nbytes;
+    int           aux_fd, port;
 
-    server             srv;
-    connection         conn;
+    server        srv;
+    connection    conn;
 
     curl_data curldata;
     curldata.data = malloc(1);
@@ -142,6 +142,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "usage: %s <URL to file> <port>\n", argv[0]);
         return 1;
     }
+
+    curl_global_init(CURL_GLOBAL_ALL);
 
     manager_download_file(argv[1], &curldata);
 
@@ -217,7 +219,7 @@ int main(int argc, char *argv[])
                 continue;
 
             if (pfds[i].revents & (POLLIN | POLLERR)) {
-                nbytes = recv(aux_fd, buf, BUF_SIZE, 0);
+                nbytes = recv(aux_fd, &buf, sizeof(buf), 0);
 
                 if (nbytes <= 0) {
                     if (nbytes < 0)
@@ -228,8 +230,19 @@ int main(int argc, char *argv[])
                     pfds[i].fd = -1;
                 }
                 else {
-                    /* Handle clients */
-                    printf("Read %d bytes from socket %d\n", nbytes, aux_fd);
+                    /* El byte va a ser el número de apariciones de un patrón */
+                    /* Convertimos ese byte al número apropiado */
+                    /* Buscamos en files_status el fichero que procesaba ese fd:
+                     *  · No se encuentra:
+                     *      Se ignora el mensaje (y se imprime algo)
+                     *  · Se encuentra:
+                     *      La posición correspondiente de files_status -> -fd
+                     *      Se incrementa el número de apariciones
+                     */
+                    printf("Read %d bytes from socket %d: [%d]\n",
+                            nbytes, aux_fd, ntohl(buf));
+                    manager_distribute_work(conn->fd, files_status,
+                                            files_todo, &files_done);
                 }
 
 
@@ -249,7 +262,7 @@ int main(int argc, char *argv[])
      *         free(files_todo[i])
      */
 
-    free(&curldata);
+    free(curldata.data);
     net_conn_delete(&conn);
     net_server_delete(&srv);
     
