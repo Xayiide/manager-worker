@@ -107,13 +107,20 @@ void manager_download_file(char *url, curl_data *curldata)
     curl_easy_cleanup(curl);
 }
 
+void manager_finalize_work(int fd, )
+{
+
+}
+
+
+
 int main(int argc, char *argv[])
 {
     struct pollfd pfds[MAX_CLIENTS]; /* storing the server fd (pfds[0]) */
     int           fd_highest = 0;
 
     int           poll_count;
-    int           buf;
+    int           text_count, total_count = 0;
     int           i, nbytes;
     int           aux_fd, port;
 
@@ -219,7 +226,7 @@ int main(int argc, char *argv[])
                 continue;
 
             if (pfds[i].revents & (POLLIN | POLLERR)) {
-                nbytes = recv(aux_fd, &buf, sizeof(buf), 0);
+                nbytes = recv(aux_fd, &text_count, sizeof(text_count), 0);
 
                 if (nbytes <= 0) {
                     if (nbytes < 0)
@@ -240,7 +247,11 @@ int main(int argc, char *argv[])
                      *      Se incrementa el número de apariciones
                      */
                     printf("Read %d bytes from socket %d: [%d]\n",
-                            nbytes, aux_fd, ntohl(buf));
+                            nbytes, aux_fd, ntohl(text_count));
+                    manager_finalize_work(aux_fd, text_count,
+                            &total_count, files_status);
+
+                    total_count += ntohl(text_count);
                     manager_distribute_work(conn->fd, files_status,
                                             files_todo, &files_done);
                 }

@@ -46,7 +46,6 @@ size_t worker_get_data(void *buf, size_t itemsize, size_t nitems, void *userdata
     curldata->size += chunksize;
     curldata->data[curldata->size] = 0; /* null-terminator */
 
-    printf("data [%ld] %s\n", curldata->size, curldata->data);
 
     return chunksize;
 }
@@ -84,15 +83,32 @@ void worker_download_file(char *url, char **data, size_t *size)
     curl_easy_cleanup(curl);
 }
 
+int32_t worker_search_file(char *file, char *search)
+{
+    int32_t  count  = 0;
+    size_t   search_len;
+    char    *pos;
 
+    search_len = strlen(search);
+    pos        = file;
+
+    if (search_len != 0) {
+        while ((pos = strstr(pos, search))) {
+            pos += search_len;
+            count++;
+        }
+    }
+
+    return count;
+}
 
 int main(int argc, char *argv[])
 {
-    char   url[BUF_SIZE] = { 0 };
-    int    nbytes        = 0;
-    int    result        = 0;
-    char  *file;
-    size_t size;
+    char     url[BUF_SIZE] = { 0 };
+    int      nbytes        = 0;
+    int32_t  result        = 0;
+    char    *file;
+    size_t   size;
 
     if (argc != 3) {
         fprintf(stderr, "Uso: %s <hostname> <puerto>\n", argv[0]);
@@ -120,12 +136,8 @@ int main(int argc, char *argv[])
         printf("Received url: %s\n", url);
 
         worker_download_file(url, &file, &size);
-        printf("url contents: %s\n", file);
+        result = worker_search_file(file, "google.ru");
 
-        /* TODO: Procesar file */
-
-        sleep(5);
-        result = 6199281;
         result = htonl(result);
         nbytes = send(g_clnt->fd, &result, sizeof(result), 0);
         if (nbytes == -1) {
