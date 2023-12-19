@@ -271,15 +271,6 @@ int main(int argc, char *argv[])
                     manager_remove_worker(aux_fd, files_status);
                 }
                 else {
-                    /* El byte va a ser el número de apariciones de un patrón */
-                    /* Convertimos ese byte al número apropiado */
-                    /* Buscamos en files_status el fichero que procesaba ese fd:
-                     *  · No se encuentra:
-                     *      Se ignora el mensaje (y se imprime algo)
-                     *  · Se encuentra:
-                     *      La posición correspondiente de files_status -> -fd
-                     *      Se incrementa el número de apariciones
-                     */
                     printf("Read %d bytes from socket %d: [%d]\n",
                             nbytes, aux_fd, ntohl(text_count));
                     manager_finalize_work(aux_fd, files_status);
