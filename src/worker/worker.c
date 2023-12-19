@@ -13,7 +13,8 @@ typedef struct {
     size_t  size;
 } curl_data;
 
-#define BUF_SIZE 256
+#define SHORT_FN_LEN 12
+#define BUF_SIZE     256
 
 int g_run = 1;
 client g_clnt;
@@ -58,8 +59,6 @@ void worker_download_file(char *url, char **data, size_t *size)
 
     curldata.data = *data;
     curldata.size = *size;
-
-    printf("Downloading file %s\n", url);
 
     /* TODO: Hacerlo sólo una vez */
     //curl_global_init(CURL_GLOBAL_ALL);
@@ -108,6 +107,7 @@ int main(int argc, char *argv[])
     int      nbytes        = 0;
     int32_t  result        = 0;
     char    *file;
+    char     short_filename[SHORT_FN_LEN] = { 0 }; /* test.nn.csv */
     size_t   size;
 
     if (argc != 3) {
@@ -133,7 +133,8 @@ int main(int argc, char *argv[])
             break;
         }
         url[nbytes] = '\0'; /* por si acaso */
-        printf("Received url: %s\n", url);
+        strcpy(short_filename, &url[strlen(url) - SHORT_FN_LEN + 1]);
+        printf("Downloading file: %s\n", short_filename);
 
         worker_download_file(url, &file, &size);
         result = worker_search_file(file, "google.ru");

@@ -232,15 +232,6 @@ connection net_server_accept(server srv)
     return conn;
 }
 
-int net_server_recv(connection conn, uint8_t *buf, size_t len)
-{
-    int nbytes = 0;
-
-
-    return nbytes;
-}
-
-
 void net_server_delete(server *srv)
 {
     server s;

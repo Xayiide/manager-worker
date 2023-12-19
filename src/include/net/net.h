@@ -44,8 +44,6 @@ server net_server_create(char *service, int backlog);
 
 connection net_server_accept(server srv);
 
-int net_server_recv(connection conn, uint8_t *buf, size_t len);
-
 void net_server_delete(server *srv);
 
 #endif

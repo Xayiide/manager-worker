@@ -107,11 +107,42 @@ void manager_download_file(char *url, curl_data *curldata)
     curl_easy_cleanup(curl);
 }
 
-void manager_finalize_work(int fd, )
+void manager_finalize_work(int fd, int *files_status)
 {
+    int i;
+    int count = 0;
+
+    for (i = 0; i < NUM_FILES; i++) {
+        if (files_status[i] == fd) {
+            files_status[i] = -fd;
+            count++;
+        }
+    }
+
+    if (count > 1)
+        fprintf(stderr, "[error] %d apariciones del fd %d en files_status\n",
+                count, fd);
 
 }
 
+void manager_remove_worker(int fd, int *files_status)
+{
+    int i;
+    int count = 0;
+
+    for (i = 0; i < NUM_FILES; i++) {
+        if (files_status[i] == fd) {
+            files_status[i] = 0;
+            count++;
+            printf("File %d removed from fd %d\n", i, fd);
+        }
+    }
+
+    if (count > 1)
+        fprintf(stderr, "[error] %d apariciones del fd %d en files_status\n",
+                count, fd);
+
+}
 
 
 int main(int argc, char *argv[])
@@ -123,6 +154,8 @@ int main(int argc, char *argv[])
     int           text_count, total_count = 0;
     int           i, nbytes;
     int           aux_fd, port;
+    int           run = 1;
+    int           work_left;
 
     server        srv;
     connection    conn;
@@ -184,7 +217,7 @@ int main(int argc, char *argv[])
     pfds[0].fd     = srv->fd;
     pfds[0].events = POLLIN;
 
-    while (1) {
+    while (run == 1) {
         poll_count = poll(pfds, fd_highest + 1, -1);
 
         if (poll_count <= 0)
@@ -235,6 +268,7 @@ int main(int argc, char *argv[])
                         printf("Close socket %d\n", aux_fd);
                     close(aux_fd);
                     pfds[i].fd = -1;
+                    manager_remove_worker(aux_fd, files_status);
                 }
                 else {
                     /* El byte va a ser el número de apariciones de un patrón */
@@ -248,12 +282,16 @@ int main(int argc, char *argv[])
                      */
                     printf("Read %d bytes from socket %d: [%d]\n",
                             nbytes, aux_fd, ntohl(text_count));
-                    manager_finalize_work(aux_fd, text_count,
-                            &total_count, files_status);
+                    manager_finalize_work(aux_fd, files_status);
+                    files_done++;
 
                     total_count += ntohl(text_count);
-                    manager_distribute_work(conn->fd, files_status,
-                                            files_todo, &files_done);
+                    work_left = manager_distribute_work(conn->fd,
+                                                        files_status,
+                                                        files_todo,
+                                                        &files_done);
+                    if (work_left == -1)
+                        run = 0;
                 }
 
 
@@ -264,14 +302,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    /* for i in files_todo:
-     *     if (files_status[i] == 0)
-     *         error: todavía procesándose
-     *     if (files_status[i] > 0)
-     *         error: no repartido
-     *     if (files_status[i] < 0)
-     *         free(files_todo[i])
-     */
+    printf("Total de apariciones del texto %s: %d\n", "google.ru", total_count);
+
+    for (i = 0; i < NUM_FILES; i++) {
+        if (files_status[i] == 0)
+            fprintf(stderr, "[%s] no fue procesado\n", files_todo[i]);
+        if (files_status[i] > 0)
+            fprintf(stderr, "[%s] sigue procesándose\n", files_todo[i]);
+        if (files_status[i] < 0)
+            free(files_todo[i]);
+    }
 
     free(curldata.data);
     net_conn_delete(&conn);
