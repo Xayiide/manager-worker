@@ -18,44 +18,6 @@ typedef struct {
     size_t  size;
 } curl_data;
 
-int manager_distribute_work(int   fd,           int *files_status,
-                            char *files_todo[], int *files_done)
-{
-    int   index   = 0;
-    int   found   = 0;
-    int   ret_tmp = 0;
-    char *file;
-
-    if (*files_done == NUM_FILES) {
-        printf("No work to distribute, everything's done\n");
-        return -1;
-    }
-
-    while (found == 0 && index < NUM_FILES) {
-        if (files_status[index] == 0)
-            found = 1;
-        else
-            index++;
-    }
-
-    if (found == 0) {
-        fprintf(stderr, "Error: no files available but files_done=%d\n",
-                *files_done);
-        return -1;
-    }
-
-    file = files_todo[index];
-    ret_tmp = send(fd, file, strlen(file), 0);
-    if (ret_tmp == -1) {
-        fprintf(stderr, "Error sending file %s to fd %d\n", file, fd);
-        return -1;
-    }
-
-    files_status[index] = fd;
-
-    return index;
-}
-
 size_t manager_get_data(void *buf, size_t itemsize, size_t nitems, void *userdata)
 {
     size_t     chunksize;
@@ -107,7 +69,46 @@ void manager_download_file(char *url, curl_data *curldata)
     curl_easy_cleanup(curl);
 }
 
-void manager_finalize_work(int fd, int *files_status)
+
+int manager_distribute_work(int   fd,           int *files_status,
+                            char *files_todo[], int *files_done)
+{
+    int   index   = 0;
+    int   found   = 0;
+    int   ret_tmp = 0;
+    char *file;
+
+    if (*files_done == NUM_FILES) {
+        printf("No work to distribute, everything's done\n");
+        return -1;
+    }
+
+    while (found == 0 && index < NUM_FILES) {
+        if (files_status[index] == 0)
+            found = 1;
+        else
+            index++;
+    }
+
+    if (found == 0) {
+        fprintf(stderr, "Error: no files available but files_done=%d\n",
+                *files_done);
+        return -1;
+    }
+
+    file = files_todo[index];
+    ret_tmp = send(fd, file, strlen(file), 0);
+    if (ret_tmp == -1) {
+        fprintf(stderr, "Error sending file %s to fd %d\n", file, fd);
+        return -1;
+    }
+
+    files_status[index] = fd;
+
+    return index;
+}
+
+void manager_finalize_work(int fd, int *files_status, char *files_todo[])
 {
     int i;
     int count = 0;
@@ -116,6 +117,7 @@ void manager_finalize_work(int fd, int *files_status)
         if (files_status[i] == fd) {
             files_status[i] = -fd;
             count++;
+            printf("[finalize_work] File %s marked as %d\n", files_todo[i], fd);
         }
     }
 
@@ -125,7 +127,7 @@ void manager_finalize_work(int fd, int *files_status)
 
 }
 
-void manager_remove_worker(int fd, int *files_status)
+void manager_remove_worker(int fd, int *files_status, char *files_todo[])
 {
     int i;
     int count = 0;
@@ -134,12 +136,12 @@ void manager_remove_worker(int fd, int *files_status)
         if (files_status[i] == fd) {
             files_status[i] = 0;
             count++;
-            printf("File %d removed from fd %d\n", i, fd);
+            printf("[remove_worker] File %s removed from fd %d\n", files_todo[i], fd);
         }
     }
 
     if (count > 1)
-        fprintf(stderr, "[error] %d apariciones del fd %d en files_status\n",
+        fprintf(stderr, "[remove_worker] %d apariciones del fd %d en files_status\n",
                 count, fd);
 
 }
@@ -196,9 +198,6 @@ int main(int argc, char *argv[])
         i++;
     }
 
-    for (i = 0; i < NUM_FILES; i++)
-        printf("%d: %s\n", i, files_todo[i]);
-
     printf("file size: %zu bytes\n", curldata.size);
 
     port = atoi(argv[2]);
@@ -208,6 +207,10 @@ int main(int argc, char *argv[])
     }
 
     srv = net_server_create(argv[2], LISTENQ);
+    if (srv == NULL) {
+        fprintf(stderr, "Error creating server\n");
+        return 1;
+    }
     printf("Listening socket: %d\n", srv->fd);
     
     for (i = 1; i < MAX_CLIENTS; i++) {
@@ -268,12 +271,12 @@ int main(int argc, char *argv[])
                         printf("Close socket %d\n", aux_fd);
                     close(aux_fd);
                     pfds[i].fd = -1;
-                    manager_remove_worker(aux_fd, files_status);
+                    manager_remove_worker(aux_fd, files_status, files_todo);
                 }
                 else {
                     printf("Read %d bytes from socket %d: [%d]\n",
                             nbytes, aux_fd, ntohl(text_count));
-                    manager_finalize_work(aux_fd, files_status);
+                    manager_finalize_work(aux_fd, files_status, files_todo);
                     files_done++;
 
                     total_count += ntohl(text_count);

@@ -38,7 +38,7 @@ size_t worker_get_data(void *buf, size_t itemsize, size_t nitems, void *userdata
 
     ptr = realloc(curldata->data, curldata->size + chunksize + 1);
     if (ptr == NULL) {
-        fprintf(stderr, "realloc\n");
+        fprintf(stderr, "[client] realloc\n");
         return CURLE_WRITE_ERROR;
     }
 
@@ -64,7 +64,7 @@ void worker_download_file(char *url, char **data, size_t *size)
     //curl_global_init(CURL_GLOBAL_ALL);
     curl = curl_easy_init();
     if (curl == NULL) {
-        fprintf(stderr, "curl_easy_init\n");
+        fprintf(stderr, "[client] error: curl_easy_init\n");
         exit(EXIT_FAILURE);
     }
 
@@ -74,7 +74,7 @@ void worker_download_file(char *url, char **data, size_t *size)
 
     result = curl_easy_perform(curl);
     if (result != CURLE_OK) {
-        fprintf(stderr, "CURL problem: %s\n", curl_easy_strerror(result));
+        fprintf(stderr, "[client] CURL problem: %s\n", curl_easy_strerror(result));
         exit(EXIT_FAILURE);
     }
     *data = curldata.data;
@@ -127,14 +127,14 @@ int main(int argc, char *argv[])
         nbytes = recv(g_clnt->fd, url, BUF_SIZE, 0);
         if (nbytes <= 0) {
             if (nbytes < 0)
-                perror("read");
+                perror("[client] read");
             else if (nbytes == 0)
-                printf("Server closed the socket\n");
+                printf("[client] Server closed the socket\n");
             break;
         }
         url[nbytes] = '\0'; /* por si acaso */
         strcpy(short_filename, &url[strlen(url) - SHORT_FN_LEN + 1]);
-        printf("Downloading file: %s\n", short_filename);
+        printf("[client] Downloading file: %s\n", short_filename);
 
         worker_download_file(url, &file, &size);
         result = worker_search_file(file, "google.ru");
