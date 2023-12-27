@@ -154,7 +154,8 @@ int main(int argc, char *argv[])
 
     int           poll_count;
     int           text_count, total_count = 0;
-    int           i, nbytes;
+    int           i = 0;
+    int           nbytes;
     int           aux_fd, port;
     int           run = 1;
     int           work_left;
@@ -167,7 +168,7 @@ int main(int argc, char *argv[])
     curldata.size = 0;
 
     /* Guarda las 100 urls de los ficheros csv que se quieren repartir */
-    char *files_todo[NUM_FILES];
+    char **files_todo;
     /* Guarda el estado de procesamiento de cada elemento de files_todo.
      * files_status[i] puede tener 3 valores:
      *  · > 0: fd del socket al que se ha mandado files_todo[i] para procesar.
@@ -178,38 +179,46 @@ int main(int argc, char *argv[])
     char *pch        = NULL;
 
 
-
-
     if (argc != 3) {
         fprintf(stderr, "usage: %s <URL to file> <port>\n", argv[0]);
-        return 1;
+        exit(EXIT_FAILURE);
+    }
+
+    port = atoi(argv[2]);
+    if (port <= 0 || port > 65535) {
+        fprintf(stderr, "Invalid port number %d\n", port);
+        exit(EXIT_FAILURE);
     }
 
     curl_global_init(CURL_GLOBAL_ALL);
 
     manager_download_file(argv[1], &curldata);
-
-    i = 0;
-    pch = strtok(curldata.data, "\n"); /* pch -> null-terminated */
-    while (pch != NULL) {
-        files_todo[i] = malloc(strlen(pch));
-        strncpy(files_todo[i], pch, strlen(pch) + 1);
-        pch = strtok(NULL, "\n");
-        i++;
-    }
-
     printf("file size: %zu bytes\n", curldata.size);
 
-    port = atoi(argv[2]);
-    if (port <= 0 || port > 65535) {
-        fprintf(stderr, "Invalid port number %d\n", port);
-        return 1;
+    files_todo = malloc(sizeof(char *) * NUM_FILES);
+    if (files_todo == NULL) {
+        fprintf(stderr, "[%s:%d] malloc\n", __FILE__, __LINE__);
+        exit(EXIT_FAILURE);
     }
+
+    i   = 0;
+    pch = strtok(curldata.data, "\n");
+    while (pch != NULL) {
+        files_todo[i] = malloc(strlen(pch));
+        if (files_todo[i] == NULL) {
+            fprintf(stderr, "[%s:%d] malloc\n", __FILE__, __LINE__);
+            exit(EXIT_FAILURE);
+        }
+        strncpy(files_todo[i], pch, strlen(pch));
+        i++;
+        pch = strtok(NULL, "\n");
+    }
+
 
     srv = net_server_create(argv[2], LISTENQ);
     if (srv == NULL) {
         fprintf(stderr, "Error creating server\n");
-        return 1;
+        exit(EXIT_FAILURE);
     }
     printf("Listening socket: %d\n", srv->fd);
     
@@ -274,8 +283,6 @@ int main(int argc, char *argv[])
                     manager_remove_worker(aux_fd, files_status, files_todo);
                 }
                 else {
-                    printf("Read %d bytes from socket %d: [%d]\n",
-                            nbytes, aux_fd, ntohl(text_count));
                     manager_finalize_work(aux_fd, files_status, files_todo);
                     files_done++;
 
@@ -307,6 +314,7 @@ int main(int argc, char *argv[])
             free(files_todo[i]);
     }
 
+    free(files_todo);
     free(curldata.data);
     net_conn_delete(&conn);
     net_server_delete(&srv);
