@@ -172,11 +172,11 @@ server net_server_create(char *service, int backlog)
     }
 
     /* Non-blocking */
-    ret_tmp = ioctl(srv->fd, FIONBIO, (char *)&yes);
-    if (ret_tmp < 0) {
-        fprintf(stderr, "[%s:%d] ioctl\n", __FILE__, __LINE__);
-        return NULL;
-    }
+    //ret_tmp = ioctl(srv->fd, FIONBIO, (char *)&yes);
+    //if (ret_tmp < 0) {
+    //    fprintf(stderr, "[%s:%d] ioctl\n", __FILE__, __LINE__);
+    //    return NULL;
+    //}
 
     ret_tmp = bind(srv->fd, (struct sockaddr *) &(srv->local_saddr),
                    sizeof(struct sockaddr_in));

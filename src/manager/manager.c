@@ -48,8 +48,6 @@ void manager_download_file(char *url, curl_data *curldata)
     CURL     *curl;
     CURLcode  result;
 
-    /*TODO: Hacerlo sólo una vez */
-    //curl_global_init(CURL_GLOBAL_ALL);
     curl = curl_easy_init();
     if (curl == NULL) {
         fprintf(stderr, "curl_easy_init\n");
@@ -77,6 +75,7 @@ int manager_distribute_work(int   fd,           int *files_status,
     int   found   = 0;
     int   ret_tmp = 0;
     char *file;
+    char  short_filename[12] = { 0 };
 
     if (*files_done == NUM_FILES) {
         printf("No work to distribute, everything's done\n");
@@ -102,6 +101,8 @@ int manager_distribute_work(int   fd,           int *files_status,
         fprintf(stderr, "Error sending file %s to fd %d\n", file, fd);
         return -1;
     }
+    strcpy(short_filename, &file[strlen(file) - 12 + 1]);
+    printf("[distribute_work] Sent %s to fd %d\n", short_filename, fd);
 
     files_status[index] = fd;
 
@@ -112,12 +113,16 @@ void manager_finalize_work(int fd, int *files_status, char *files_todo[])
 {
     int i;
     int count = 0;
+    char *filename;
+    char short_filename[12] = { 0 };
 
     for (i = 0; i < NUM_FILES; i++) {
         if (files_status[i] == fd) {
             files_status[i] = -fd;
             count++;
-            printf("[finalize_work] File %s marked as %d\n", files_todo[i], fd);
+            filename = files_todo[i];
+            strcpy(short_filename, &filename[strlen(filename) - 12 + 1]);
+            printf("[finalize_work] File %s marked as %d\n", short_filename, fd);
         }
     }
 

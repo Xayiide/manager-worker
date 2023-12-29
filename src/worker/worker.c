@@ -145,6 +145,8 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Error sending result to server\n");
             break;
         }
+
+        sleep(3); /* FIXME */
     }
 
     free(file);
