@@ -60,8 +60,6 @@ void worker_download_file(char *url, char **data, size_t *size)
     curldata.data = *data;
     curldata.size = *size;
 
-    /* TODO: Hacerlo sólo una vez */
-    //curl_global_init(CURL_GLOBAL_ALL);
     curl = curl_easy_init();
     if (curl == NULL) {
         fprintf(stderr, "[client] error: curl_easy_init\n");
@@ -85,17 +83,13 @@ void worker_download_file(char *url, char **data, size_t *size)
 int32_t worker_search_file(char *file, char *search)
 {
     int32_t  count  = 0;
-    size_t   search_len;
     char    *pos;
 
-    search_len = strlen(search);
-    pos        = file;
+    pos = file;
 
-    if (search_len != 0) {
-        while ((pos = strstr(pos, search))) {
-            pos += search_len;
-            count++;
-        }
+    while ((pos = strstr(pos, search))) {
+        count++;
+        pos++;
     }
 
     return count;
@@ -134,10 +128,11 @@ int main(int argc, char *argv[])
         }
         url[nbytes] = '\0'; /* por si acaso */
         strcpy(short_filename, &url[strlen(url) - SHORT_FN_LEN + 1]);
-        printf("[client] Downloading file: %s\n", short_filename);
+        printf("[client] Downloading file: %s", short_filename);
 
         worker_download_file(url, &file, &size);
         result = worker_search_file(file, "google.ru");
+        printf(" -> %d\n", result);
 
         result = htonl(result);
         nbytes = send(g_clnt->fd, &result, sizeof(result), 0);
@@ -146,7 +141,7 @@ int main(int argc, char *argv[])
             break;
         }
 
-        sleep(3); /* FIXME */
+        //sleep(3); /* FIXME */
     }
 
     free(file);

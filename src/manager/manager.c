@@ -134,14 +134,18 @@ void manager_finalize_work(int fd, int *files_status, char *files_todo[])
 
 void manager_remove_worker(int fd, int *files_status, char *files_todo[])
 {
-    int i;
-    int count = 0;
+    int   i;
+    int   count = 0;
+    char *filename;
+    char  short_filename[12] = { 0 };
 
     for (i = 0; i < NUM_FILES; i++) {
         if (files_status[i] == fd) {
             files_status[i] = 0;
             count++;
-            printf("[remove_worker] File %s removed from fd %d\n", files_todo[i], fd);
+            filename = files_todo[i];
+            strcpy(short_filename, &filename[strlen(filename) - 12 + 1]);
+            printf("[remove_worker] File %s removed from fd %d\n", short_filename, fd);
         }
     }
 
@@ -209,12 +213,14 @@ int main(int argc, char *argv[])
     i   = 0;
     pch = strtok(curldata.data, "\n");
     while (pch != NULL) {
+        printf("[%ld] ", strlen(pch));
         files_todo[i] = malloc(strlen(pch));
         if (files_todo[i] == NULL) {
             fprintf(stderr, "[%s:%d] malloc\n", __FILE__, __LINE__);
             exit(EXIT_FAILURE);
         }
-        strncpy(files_todo[i], pch, strlen(pch));
+        strcpy(files_todo[i], pch);
+        printf("%s\n", files_todo[i]);
         i++;
         pch = strtok(NULL, "\n");
     }
