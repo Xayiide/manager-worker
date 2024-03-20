@@ -6,7 +6,10 @@
 #include <netinet/in.h> /* sockaddr_in, INET_ADDRSTRLEN */
 #include <arpa/inet.h>  /* inet_ntop                    */
 
+#include <poll.h>   /* polling */
+
 #define LISTENQUEUE 10
+#define MAX_CLIENTS 10
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -19,19 +22,25 @@ void *get_in_addr(struct sockaddr *sa)
 
 int main(int argc, char *argv[])
 {
+    int i;
+    int ret_tmp;
 
-    struct addrinfo     hints, *res;
-    char                yes = 1;
-    int                 new_fd, sockfd;
+    struct addrinfo         hints, *res;
+    char                    yes = 1;
+    int                     new_fd, sockfd;
     struct sockaddr_storage their_addr;
-    char s[INET6_ADDRSTRLEN];
+    char                    s[INET6_ADDRSTRLEN];
 
-    int                 ret_tmp;
+    struct pollfd pfds[MAX_CLIENTS];
+    int           poll_count = 0;
+    int           fd_highest = 0;
 
     if (argc != 3) {
         fprintf(stderr, "usage: %s <name> <service>\n", argv[0]);
         return EXIT_FAILURE;
     }
+
+
 
     printf("[Manager]\n");
 
@@ -76,24 +85,91 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    /* Inicializar todos los pfd como inutilizados */
+    for (i = 0; i < MAX_CLIENTS; i++)
+        pfds[i].fd = -1;
+    /* Inicializamos el primer pfd para que sea el del servidor */
+    pfds[0].fd     = sockfd;
+    pfds[0].events = POLLIN;
 
     printf("Waiting for connections...\n");
+    socklen_t sin_size = sizeof(their_addr);
     while (1) {
-        socklen_t sin_size;
-        sin_size = sizeof(their_addr);
-        new_fd = accept(sockfd, (struct sockaddr *) &their_addr, &sin_size);
-        if (new_fd == -1) {
-            fprintf(stderr, "accept\n");
+        poll_count = poll(pfds, fd_highest + 1, -1);
+        if (poll_count <= 0)
             continue;
+
+        /* evento de input en el server (0) */
+        if (pfds[0].revents & POLLIN) { 
+            new_fd = accept(sockfd, (struct sockaddr *) &their_addr,
+                            &sin_size);
+            if (new_fd == -1) {
+                fprintf(stderr, "accept\n");
+                continue;
+            }
+
+            inet_ntop(their_addr.ss_family,
+                      get_in_addr((struct sockaddr *) &their_addr),
+                      s, sizeof(s));
+            printf("server: got connection from %s\n", s);
+
+            /* Encuentro el primer pfd que esté inutilizado y lo utilizo */
+            for (i = 0; i < MAX_CLIENTS; i++) {
+                if (pfds[i].fd < 0) {
+                    pfds[i].fd = new_fd;
+                    break;
+                }
+            }
+
+            if (i == MAX_CLIENTS) {
+                fprintf(stderr, "Demasiados clientes [%d]\n", MAX_CLIENTS);
+                close(new_fd);
+            }
+
+            /* Marcar el nuevo fd como escuchando cambios en INPUT */
+            pfds[i].events = POLLIN;
+
+            if (i < fd_highest)
+                fd_highest = i;
+
+            poll_count--;
+            if (poll_count <= 0)
+                continue;
         }
 
-        inet_ntop(their_addr.ss_family,
-                  get_in_addr((struct sockaddr *) &their_addr),
-                  s, sizeof(s));
-        printf("server: got connection from %s\n", s);
+        /* Compruebo eventos de escritura en el resto de fds */
+        int  nbytes;
+        char buf[100];
+        int  auxfd;
+        for (i = 1; i <= fd_highest; i++) {
+            auxfd = pfds[i].fd;
+            /* Ignora fds a -1 */
+            if (auxfd < 0)
+                continue;
 
+            if (pfds[i].revents & (POLLIN | POLLERR)) {
+                nbytes = recv(auxfd, buf, 100, 0);
+
+                if (nbytes <= 0) {
+                    if (nbytes < 0) {
+                        fprintf(stderr, "recv\n");
+                    }
+                    else if (nbytes == 0) {
+                        printf("Close socket %d\n", auxfd);
+                    }
+                    close(auxfd);
+                    pfds[i].fd = -1;
+                }
+                else {
+                    printf("recv: Work to do!\n");
+                }
+
+                poll_count--;
+                if (poll_count <= 0)
+                    break;
+            }
+        }
     }
-
 
     return EXIT_SUCCESS;
 }
