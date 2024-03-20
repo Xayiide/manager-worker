@@ -1,151 +1,73 @@
 #include <stdio.h>
-#include <unistd.h> /* sleep */
-#include <signal.h> /* signal */
-#include <stdlib.h> /* exit */
-#include <string.h> /* memset */
-#include <sys/socket.h> /* shutdown, SHUT_RDWR */
-#include <curl/curl.h> /* curl */
-
-#include "net/net.h"
-
-typedef struct {
-    char   *data;
-    size_t  size;
-} curl_data;
-
-#define SHORT_FN_LEN 12
-#define BUF_SIZE     256
-
-int g_run = 1;
-client g_clnt;
+#include <stdlib.h> 
+#include <netdb.h>
+#include <string.h>
+#include <unistd.h>
+#include <netinet/in.h> /* sockaddr */
+#include <arpa/inet.h>
 
 
-void ctrl_c_handler(int d) {
-    g_run = 0;
-    printf("Closing fd %d [%d]\n", g_clnt->fd, d);
-    //shutdown(g_clnt->fd, SHUT_RDWR);
-    close(g_clnt->fd);
-}
 
-size_t worker_get_data(void *buf, size_t itemsize, size_t nitems, void *userdata)
+
+void *get_in_addr(struct sockaddr *sa)
 {
-    size_t     chunksize;
-    curl_data *curldata;
-    char      *ptr;
-
-    chunksize = itemsize * nitems;
-    curldata  = (curl_data *) userdata;
-
-    ptr = realloc(curldata->data, curldata->size + chunksize + 1);
-    if (ptr == NULL) {
-        fprintf(stderr, "[client] realloc\n");
-        return CURLE_WRITE_ERROR;
+    if (sa->sa_family == AF_INET) {
+        return &(((struct sockaddr_in*)sa)->sin_addr);
     }
 
-    curldata->data = ptr;
-    memcpy(&(curldata->data[curldata->size]), buf, chunksize);
-    curldata->size += chunksize;
-    curldata->data[curldata->size] = 0; /* null-terminator */
-
-
-    return chunksize;
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-void worker_download_file(char *url, char **data, size_t *size)
+
+int main (int argc, char *argv[])
 {
-    CURL     *curl;
-    CURLcode  result;
-    curl_data curldata;
+    struct addrinfo hints, *res;
+    int             sockfd;
+    char            s[INET6_ADDRSTRLEN];
 
-    curldata.data = *data;
-    curldata.size = *size;
-
-    curl = curl_easy_init();
-    if (curl == NULL) {
-        fprintf(stderr, "[client] error: curl_easy_init\n");
-        exit(EXIT_FAILURE);
-    }
-
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, worker_get_data);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) &curldata);
-
-    result = curl_easy_perform(curl);
-    if (result != CURLE_OK) {
-        fprintf(stderr, "[client] CURL problem: %s\n", curl_easy_strerror(result));
-        exit(EXIT_FAILURE);
-    }
-    *data = curldata.data;
-
-    curl_easy_cleanup(curl);
-}
-
-int32_t worker_search_file(char *file, char *search)
-{
-    int32_t  count  = 0;
-    char    *pos;
-
-    pos = file;
-
-    while ((pos = strstr(pos, search))) {
-        count++;
-        pos++;
-    }
-
-    return count;
-}
-
-int main(int argc, char *argv[])
-{
-    char     url[BUF_SIZE] = { 0 };
-    int      nbytes        = 0;
-    int32_t  result        = 0;
-    char    *file;
-    char     short_filename[SHORT_FN_LEN] = { 0 }; /* test.nn.csv */
-    size_t   size;
+    int             ret_tmp;
 
     if (argc != 3) {
-        fprintf(stderr, "Uso: %s <hostname> <puerto>\n", argv[0]);
-        return 1;
+        fprintf(stderr, "usage: %s <server name> <server port>\n", argv[0]);
+        return EXIT_FAILURE;
     }
 
-    curl_global_init(CURL_GLOBAL_ALL);
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family   = AF_INET; /* IPv4. AF_UNSPEC for any version */
+    hints.ai_socktype = SOCK_STREAM;
 
-    signal(SIGINT, ctrl_c_handler);
-
-    file = malloc(1);
-    size = 0;
-
-    g_clnt = net_client_create(argv[1], argv[2]);
-    while (g_run == 1) {
-        nbytes = recv(g_clnt->fd, url, BUF_SIZE, 0);
-        if (nbytes <= 0) {
-            if (nbytes < 0)
-                perror("[client] read");
-            else if (nbytes == 0)
-                printf("[client] Server closed the socket\n");
-            break;
-        }
-        url[nbytes] = '\0'; /* por si acaso */
-        strcpy(short_filename, &url[strlen(url) - SHORT_FN_LEN + 1]);
-        printf("[client] Downloading file: %s", short_filename);
-
-        worker_download_file(url, &file, &size);
-        result = worker_search_file(file, "google.ru");
-        printf(" -> %d\n", result);
-
-        result = htonl(result);
-        nbytes = send(g_clnt->fd, &result, sizeof(result), 0);
-        if (nbytes == -1) {
-            fprintf(stderr, "Error sending result to server\n");
-            break;
-        }
-
-        //sleep(3); /* FIXME */
+    ret_tmp = getaddrinfo(argv[1], argv[2], &hints, &res);
+    if (ret_tmp != 0) {
+        fprintf(stderr, "getaddrinfo\n");
+        return EXIT_FAILURE;
     }
 
-    free(file);
-    net_client_delete(&g_clnt);
+    if (res == NULL) {
+        fprintf(stderr, "getaddrinfo - res was NULL\n");
+        return EXIT_FAILURE;
+    }
 
-    return 0;
+    sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sockfd == -1) {
+        fprintf(stderr, "socket\n");
+        return EXIT_FAILURE;
+    }
+    
+    ret_tmp = connect(sockfd, res->ai_addr, res->ai_addrlen);
+    if (ret_tmp == -1) {
+        close(sockfd);
+        fprintf(stderr, "connect\n");
+        return EXIT_FAILURE;
+    }
+
+    inet_ntop(res->ai_family, get_in_addr((struct sockaddr *) res->ai_addr),
+              s, sizeof(s));
+    printf("client: connecting to %s\n", s);
+
+    freeaddrinfo(res);
+
+    
+    close(sockfd);
+
+    return EXIT_SUCCESS;
 }

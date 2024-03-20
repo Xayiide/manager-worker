@@ -1,22 +1,36 @@
 #include <stdio.h>  /* printf, perror                */
 #include <stdlib.h> /* exit, atoi, EXIT_SUCCESS, ... */
 #include <netdb.h>  /* getaddrinfo                   */
+#include <string.h> /* memset                        */
+#include <unistd.h> /* close                         */
 #include <netinet/in.h> /* sockaddr_in, INET_ADDRSTRLEN */
+#include <arpa/inet.h>  /* inet_ntop                    */
 
 #define LISTENQUEUE 10
+
+void *get_in_addr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET) {
+        return &(((struct sockaddr_in*)sa)->sin_addr);
+    }
+
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
 
 int main(int argc, char *argv[])
 {
 
     struct addrinfo     hints, *res;
     char                yes = 1;
-    int                 ret_tmp;
     int                 new_fd, sockfd;
     struct sockaddr_storage their_addr;
+    char s[INET6_ADDRSTRLEN];
+
+    int                 ret_tmp;
 
     if (argc != 3) {
         fprintf(stderr, "usage: %s <name> <service>\n", argv[0]);
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     printf("[Manager]\n");
@@ -66,7 +80,17 @@ int main(int argc, char *argv[])
     printf("Waiting for connections...\n");
     while (1) {
         socklen_t sin_size;
-        new_fd = accept(sockfd, )
+        sin_size = sizeof(their_addr);
+        new_fd = accept(sockfd, (struct sockaddr *) &their_addr, &sin_size);
+        if (new_fd == -1) {
+            fprintf(stderr, "accept\n");
+            continue;
+        }
+
+        inet_ntop(their_addr.ss_family,
+                  get_in_addr((struct sockaddr *) &their_addr),
+                  s, sizeof(s));
+        printf("server: got connection from %s\n", s);
 
     }
 
