@@ -65,7 +65,18 @@ int main (int argc, char *argv[])
 
     freeaddrinfo(res);
 
-    sleep(3);
+    int nbytes;
+    char buf[100];
+    while (1) {
+        nbytes = recv(sockfd, buf, 100, 0);
+        if (nbytes <= 0) {
+            if (nbytes < 0)
+                fprintf(stderr, "read\n");
+            else if (nbytes == 0)
+                fprintf(stderr, "Server closed connection\n");
+            break;
+        }
+    }
     
     close(sockfd);
 
