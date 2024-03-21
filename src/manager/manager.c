@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
             /* Marcar el nuevo fd como escuchando cambios en INPUT */
             pfds[i].events = POLLIN;
 
-            if (i < fd_highest)
+            if (i > fd_highest)
                 fd_highest = i;
 
             poll_count--;
