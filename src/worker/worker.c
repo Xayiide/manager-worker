@@ -1,11 +1,10 @@
-#include <stdio.h>
-#include <stdlib.h> 
-#include <netdb.h>
-#include <string.h>
-#include <unistd.h>
-#include <netinet/in.h> /* sockaddr */
-#include <arpa/inet.h>
-
+#include <stdio.h>      /* printf, perror                */
+#include <stdlib.h>     /* exit, EXIT_SUCCESS            */
+#include <netdb.h>      /* getaddrinfo                   */
+#include <string.h>     /* memset                        */
+#include <unistd.h>     /* close, sleep                  */
+#include <netinet/in.h> /* sockaddr_in, INET6_ADDRSTRLEN */
+#include <arpa/inet.h>  /* inet_ntop                     */
 
 
 
@@ -66,6 +65,7 @@ int main (int argc, char *argv[])
 
     freeaddrinfo(res);
 
+    sleep(3);
     
     close(sockfd);
 

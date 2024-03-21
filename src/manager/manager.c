@@ -1,12 +1,12 @@
-#include <stdio.h>  /* printf, perror                */
-#include <stdlib.h> /* exit, atoi, EXIT_SUCCESS, ... */
-#include <netdb.h>  /* getaddrinfo                   */
-#include <string.h> /* memset                        */
-#include <unistd.h> /* close                         */
-#include <netinet/in.h> /* sockaddr_in, INET_ADDRSTRLEN */
-#include <arpa/inet.h>  /* inet_ntop                    */
+#include <stdio.h>      /* printf, perror                */
+#include <stdlib.h>     /* exit, atoi, EXIT_SUCCESS, ... */
+#include <netdb.h>      /* getaddrinfo                   */
+#include <string.h>     /* memset                        */
+#include <unistd.h>     /* close                         */
+#include <netinet/in.h> /* sockaddr_in, INET6_ADDRSTRLEN */
+#include <arpa/inet.h>  /* inet_ntop                     */
 
-#include <poll.h>   /* polling */
+#include <poll.h>       /* polling                       */
 
 #define LISTENQUEUE 10
 #define MAX_CLIENTS 10
