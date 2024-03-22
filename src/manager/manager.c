@@ -40,6 +40,9 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    /* Inicializar todos los pfd como inutilizados */
+    for (i = 0; i < MAX_CLIENTS; i++)
+        pfds[i].fd = -1;
 
 
     printf("[Manager]\n");
@@ -70,6 +73,10 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    /* Inicializamos el primer pfd para que sea el del servidor */
+    pfds[0].fd     = sockfd;
+    pfds[0].events = POLLIN;
+
     ret_tmp = bind(sockfd, res->ai_addr, res->ai_addrlen);
     if (ret_tmp == -1) {
         close(sockfd);
@@ -85,12 +92,6 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    /* Inicializar todos los pfd como inutilizados */
-    for (i = 0; i < MAX_CLIENTS; i++)
-        pfds[i].fd = -1;
-    /* Inicializamos el primer pfd para que sea el del servidor */
-    pfds[0].fd     = sockfd;
-    pfds[0].events = POLLIN;
 
     printf("Waiting for connections...\n");
     socklen_t sin_size = sizeof(their_addr);
@@ -139,7 +140,7 @@ int main(int argc, char *argv[])
 
         /* Compruebo eventos de escritura en el resto de fds */
         int  nbytes;
-        char buf[100];
+        char buf[1025];
         int  auxfd;
         for (i = 1; i <= fd_highest; i++) {
             auxfd = pfds[i].fd;
@@ -148,7 +149,9 @@ int main(int argc, char *argv[])
                 continue;
 
             if (pfds[i].revents & (POLLIN | POLLERR)) {
-                nbytes = recv(auxfd, buf, 100, 0);
+                /* Vacía el buffer antes de nada */
+                memset(buf, 0, 1025);
+                nbytes = recv(auxfd, buf, 1024, 0);
 
                 if (nbytes <= 0) {
                     if (nbytes < 0) {
@@ -161,7 +164,22 @@ int main(int argc, char *argv[])
                     pfds[i].fd = -1;
                 }
                 else {
-                    printf("recv: Work to do!\n");
+                    printf("from %d: %s\n", pfds[i].fd, buf);
+                    int j;
+                    int sent;
+                    printf("Broadcasting... "); /* TODO: Comprobar que haya datos */
+                    for (j = 1; j <= fd_highest; j++) {
+                        /* Saltarse a si mismo */
+                        if (pfds[i].fd != pfds[j].fd) {
+                            sent = send(pfds[j].fd, buf, 1024, 0);
+                            if (sent == -1) {
+                                fprintf(stderr, "send: fd %d\n", pfds[j].fd);
+                                continue;
+                            }
+                            printf("%d ", pfds[j].fd);
+                        }
+                    }
+                    printf("\n");
                 }
 
                 poll_count--;
