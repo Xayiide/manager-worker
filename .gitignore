@@ -1,6 +1,11 @@
 # Vim intermediary files
 *.swp
 
+# Eclipse
+*.settings
+.project
+.cproject
+
 # Ejecutables
 src/manager/manager
 src/worker/worker
