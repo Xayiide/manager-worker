@@ -20,7 +20,7 @@ net.o:
 	cp ../net/net.o .
 
 run: all
-	@./$(TRGT)
+	@./$(TRGT) localhost 6000
 
 clean:
 	@rm -f $(TRGT) $(OBJS)
