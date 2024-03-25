@@ -11,6 +11,28 @@
 #define LISTENQUEUE 10
 #define MAX_CLIENTS 10
 
+char *names[MAX_CLIENTS + 1] = {
+    "server",
+    "client 1",
+    "client 2",
+    "client 3",
+    "client 4",
+    "client 5",
+    "client 6",
+    "client 7",
+    "client 8",
+    "client 9",
+    "client 10"/* Un nombre por cliente + el del servidor */
+};
+
+
+
+void create_msg(int fd, char *buf, size_t len) {
+    int i;
+
+    buf[0] = '[';
+}
+
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
@@ -140,7 +162,8 @@ int main(int argc, char *argv[])
 
         /* Compruebo eventos de escritura en el resto de fds */
         int  nbytes;
-        char buf[1025];
+        char buf[1024];
+        char send_buf[1024];
         int  auxfd;
         for (i = 1; i <= fd_highest; i++) {
             auxfd = pfds[i].fd;
@@ -150,7 +173,7 @@ int main(int argc, char *argv[])
 
             if (pfds[i].revents & (POLLIN | POLLERR)) {
                 /* Vacía el buffer antes de nada */
-                memset(buf, 0, 1025);
+                memset(buf, 0, 1024);
                 nbytes = recv(auxfd, buf, 1024, 0);
 
                 if (nbytes <= 0) {
@@ -168,6 +191,7 @@ int main(int argc, char *argv[])
                     int j;
                     int sent;
                     printf("Broadcasting... "); /* TODO: Comprobar que haya datos */
+                    create_msg(pfds[i].fd, send_buf, nbytes);
                     for (j = 1; j <= fd_highest; j++) {
                         /* Saltarse a si mismo */
                         if (pfds[i].fd != pfds[j].fd) {
