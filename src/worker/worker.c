@@ -92,10 +92,9 @@ int main (int argc, char *argv[])
         /* Evento de input en stdin (pfds[0]) (se ha pulsado ENTER) */
         if (pfds[0].revents & POLLIN) {
             nbytes = readline(stdin_buf, 100);
-            printf("sending: %s\n", stdin_buf);
             nbytes = send(pfds[1].fd, stdin_buf, nbytes, 0); /* Cambiar esto wtf */
             if (nbytes == -1) {
-                fprintf(stderr, "send. %d bytes sent\n", nbytes);
+                fprintf(stderr, "send.\n");
                 continue;
             }
         }
@@ -111,7 +110,7 @@ int main (int argc, char *argv[])
                 break;
             }
             else {
-                printf("%s\n", recv_buf);
+                printf("%s", recv_buf);
             }
         }
 

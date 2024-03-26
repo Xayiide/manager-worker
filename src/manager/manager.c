@@ -27,10 +27,26 @@ char *names[MAX_CLIENTS + 1] = {
 
 
 
-void create_msg(int fd, char *buf, size_t len) {
-    int i;
+int create_msg(int fd, char *send_buf, char *buf, size_t len) {
+    int pos          = 0;
+    int name_len     = 0;
+    int total_length = 0;
 
-    buf[0] = '[';
+    name_len = strlen(names[fd]);
+
+    send_buf[pos++] = '[';
+    strncpy(&send_buf[pos], names[fd], name_len);
+    pos += name_len;
+    send_buf[pos++] = ']';
+    send_buf[pos++] = ' ';
+
+    strncpy(&send_buf[pos], buf, len);
+    pos += len;
+    send_buf[pos++] = '\0';
+
+    total_length = strlen(send_buf);
+
+    return total_length;
 }
 
 void *get_in_addr(struct sockaddr *sa)
@@ -187,23 +203,20 @@ int main(int argc, char *argv[])
                     pfds[i].fd = -1;
                 }
                 else {
-                    printf("from %d: %s\n", pfds[i].fd, buf);
                     int j;
                     int sent;
-                    printf("Broadcasting... "); /* TODO: Comprobar que haya datos */
-                    create_msg(pfds[i].fd, send_buf, nbytes);
+                    int send_buf_len;
+                    send_buf_len = create_msg(pfds[i].fd, send_buf, buf, nbytes);
                     for (j = 1; j <= fd_highest; j++) {
                         /* Saltarse a si mismo */
                         if (pfds[i].fd != pfds[j].fd) {
-                            sent = send(pfds[j].fd, buf, 1024, 0);
+                            sent = send(pfds[j].fd, send_buf, send_buf_len, 0);
                             if (sent == -1) {
                                 fprintf(stderr, "send: fd %d\n", pfds[j].fd);
                                 continue;
                             }
-                            printf("%d ", pfds[j].fd);
                         }
                     }
-                    printf("\n");
                 }
 
                 poll_count--;
