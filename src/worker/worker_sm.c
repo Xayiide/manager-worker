@@ -16,31 +16,53 @@
 /* ********************************************************************** */
 /* *********************** Declaración de tipos ************************* */
 /* ********************************************************************** */
-struct worker_sm_data
+
+typedef enum {
+    STATE_POLLING,
+    STATE_SENDMSG,
+    STATE_RECVMSG,
+    STATE_CLOSE,
+} worker_state_e;
+
+typedef enum {
+    EVENT_STDIN,
+    EVENT_SOCKET,
+    EVENT_ERROR,
+    EVENT_NONE,
+} worker_event_e;
+
+typedef struct {
+    worker_state_e from;
+    worker_event_e event;
+    worker_state_e to;
+} worker_transition_t;
+
+typedef struct
 {
     worker_state_e  state;
     struct pollfd  *pfds;
     size_t          pfds_len;
-};
+} worker_data_t;
+
 
 /* ********************************************************************** */
 /* ************************* Functiones estáticas *********************** */
 /* ********************************************************************** */
-static void           worker_sm_init         (struct worker_sm_data *data,
-                                              struct pollfd         *pfds,
-                                              size_t                 pfds_len);
-static worker_event_e worker_state_polling   (struct worker_sm_data *data);
-static worker_event_e worker_state_sendmsg   (struct worker_sm_data *data);
-static worker_event_e worker_state_recvmsg   (struct worker_sm_data *data);
-static worker_event_e worker_state_close     (struct worker_sm_data *data);
-static void           worker_sm_do_transition(struct worker_sm_data *data,
-                                              worker_event_e         event);
+static void           worker_sm_init         (worker_data_t  *data,
+                                              struct pollfd  *pfds,
+                                              size_t          pfds_len);
+static worker_event_e worker_state_polling   (worker_data_t  *data);
+static worker_event_e worker_state_sendmsg   (worker_data_t  *data);
+static worker_event_e worker_state_recvmsg   (worker_data_t  *data);
+static worker_event_e worker_state_close     (worker_data_t  *data);
+static void           worker_sm_do_transition(worker_data_t  *data,
+                                              worker_event_e  event);
 
 static int readline(uint8_t *buf, int maxlen);
 
 /* worker_sm_cb: tipo nuevo. Puntero a función que como parámetro toma un
- * puntero a struct worker_sm_data y devuelve un enum worker_event_t */
-typedef worker_event_e (* worker_sm_cb)(struct worker_sm_data *);
+ * puntero a struct worker_data_t y devuelve un enum worker_event_t */
+typedef worker_event_e (* worker_sm_cb)(worker_data_t *);
 
 /* Array de worker_sm_cb. En cada índice está la función que se deberá
  * llamar para el valor correspondiente del enum worker_state_e */
@@ -69,9 +91,9 @@ static const worker_transition_t transitions[] = {
 
 void worker_sm_run(struct pollfd *pfds, size_t pfds_len)
 {
-    struct worker_sm_data data;
-    worker_sm_cb          state_callback;
-    worker_event_e        event;
+    worker_data_t  data;
+    worker_sm_cb   state_callback;
+    worker_event_e event;
 
     worker_sm_init(&data, pfds, pfds_len);
 
@@ -87,9 +109,7 @@ void worker_sm_run(struct pollfd *pfds, size_t pfds_len)
     return;
 }
 
-void worker_sm_init(struct worker_sm_data *data,
-                    struct pollfd *pfds,
-                    size_t pfds_len)
+void worker_sm_init(worker_data_t *data, struct pollfd *pfds, size_t pfds_len)
 {
     data->state    = STATE_POLLING;
     data->pfds     = pfds;
@@ -98,7 +118,7 @@ void worker_sm_init(struct worker_sm_data *data,
     return;
 }
 
-worker_event_e worker_state_polling(struct worker_sm_data *data)
+worker_event_e worker_state_polling(worker_data_t *data)
 {
     int  poll_count;
 
@@ -122,7 +142,7 @@ worker_event_e worker_state_polling(struct worker_sm_data *data)
     return EVENT_NONE;
 }
 
-worker_event_e worker_state_sendmsg(struct worker_sm_data *data)
+worker_event_e worker_state_sendmsg(worker_data_t *data)
 {
     int     nbytes;
     uint8_t stdin_buf[1024] = {0}; /* evitar chars basura antes del print */
@@ -139,7 +159,7 @@ worker_event_e worker_state_sendmsg(struct worker_sm_data *data)
     return EVENT_NONE;
 }
 
-worker_event_e worker_state_recvmsg(struct worker_sm_data *data)
+worker_event_e worker_state_recvmsg(worker_data_t *data)
 {
     int  nbytes;
     char recv_buf[1024] = {0}; /* evitar chars basura antes del print */
@@ -160,15 +180,15 @@ worker_event_e worker_state_recvmsg(struct worker_sm_data *data)
     return EVENT_NONE;
 }
 
-worker_event_e worker_state_close(struct worker_sm_data *data)
+worker_event_e worker_state_close(worker_data_t *data)
 {
     printf("ESTADO CLOSED\n");
     close(data->pfds[1].fd);
     return EVENT_NONE;
 }
 
-void worker_sm_do_transition(struct worker_sm_data *data,
-                             worker_event_e         event)
+void worker_sm_do_transition(worker_data_t  *data,
+                             worker_event_e  event)
 {
     int i;
     
