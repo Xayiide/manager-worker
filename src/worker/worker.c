@@ -19,13 +19,6 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-int readline(uint8_t *buf, int maxlen)
-{
-    fgets((char *) buf, maxlen, stdin);
-
-    return strlen((char *) buf);
-}
-
 /* Devuelve el sockfd o -1 si hay error */
 int worker_init_connections(const char *name, const char *service)
 {
@@ -76,11 +69,8 @@ int worker_init_connections(const char *name, const char *service)
 
 int main (int argc, char *argv[])
 {
-    int sockfd;
-
+    int           sockfd;
     struct pollfd pfds[2]; /* stdin y el socket */
-    int           poll_count = 0;
-
 
     if (argc != 3) {
         fprintf(stderr, "usage: %s <server name> <server port>\n", argv[0]);
@@ -99,46 +89,6 @@ int main (int argc, char *argv[])
     
 
     worker_sm_run(pfds, 2);
-
-    int     nbytes;
-    uint8_t stdin_buf[100];
-    uint8_t recv_buf[100];
-    while (1) {
-        poll_count = poll(pfds, 2, -1);
-        if (poll_count <= 0)
-            continue;
-
-        /* Evento de input en stdin (pfds[0]) (se ha pulsado ENTER) */
-        if (pfds[0].revents & POLLIN) {
-            nbytes = readline(stdin_buf, 100);
-            nbytes = send(pfds[1].fd, stdin_buf, nbytes, 0); /* Cambiar esto wtf */
-            if (nbytes == -1) {
-                fprintf(stderr, "send.\n");
-                continue;
-            }
-        }
-
-        /* Evento de input en el socket (pfds[1]) */
-        if (pfds[1].revents & POLLIN) {
-            nbytes = recv(pfds[1].fd, recv_buf, 100, 0);
-            if (nbytes <= 0) {
-                if (nbytes < 0)
-                    fprintf(stderr, "read\n");
-                else if (nbytes == 0)
-                    fprintf(stderr, "Server closed connection\n");
-                break;
-            }
-            else {
-                printf("%s", recv_buf);
-            }
-        }
-
-        poll_count--;
-        if (poll_count <= 0)
-            continue;
-    }
-    
-    close(sockfd);
 
     return EXIT_SUCCESS;
 }
