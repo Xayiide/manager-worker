@@ -8,6 +8,7 @@
 
 #include <poll.h>       /* polling                        */
 
+#include "inc/worker_sm.h"
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -34,6 +35,9 @@ int main (int argc, char *argv[])
 
     struct pollfd pfds[2]; /* stdin y el socket */
     int           poll_count = 0;
+
+    worker_sm_run(0);
+    while (1);
 
     if (argc != 3) {
         fprintf(stderr, "usage: %s <server name> <server port>\n", argv[0]);

@@ -3,7 +3,7 @@ CFLAGS = -std=gnu99 -Wall -Wextra -Wpedantic -O0 -g3
 #IFLAGS = -I../include
 
 TRGT = worker
-SRCS = worker.c
+SRCS = worker.c worker_sm.c
 OBJS = $(SRCS:.c=.o)
 
 .PHONY: all run clean re
