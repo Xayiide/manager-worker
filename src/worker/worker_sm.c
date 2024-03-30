@@ -127,15 +127,12 @@ worker_event_e worker_state_polling(worker_data_t *data)
 
     /* Evento de input en stdin */
     if (data->pfds[0].revents & POLLIN) {
-        return EVENT_STDIN;
+        return EVENT_STDIN; /* -> STATE_SENDMSG */
     }
 
     if (data->pfds[1].revents & POLLIN) {
-        return EVENT_SOCKET;
+        return EVENT_SOCKET; /* -> STATE_RECVMSG */
     }
-
-    if (poll_count <= 0)
-        return EVENT_NONE;
 
     return EVENT_NONE;
 }
