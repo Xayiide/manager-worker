@@ -11,8 +11,8 @@ OBJS = $(SRCS:.c=.o)
 all: $(TRGT)
 
 $(TRGT): $(SRCS)
-	$(CC) $(CFLAGS) $(IFLAGS) $(SRCS) -c
-	$(CC) $(CFLAGS) $(OBJS) $(LFLAGS) -o $@
+	$(CC) $(CFLAGS) $(SRCS) -c
+	$(CC) $(CFLAGS) $(OBJS) -o $@
 
 run: all
 	@./$(TRGT) localhost 6000

@@ -37,8 +37,7 @@ typedef struct {
     worker_state_e to;
 } worker_transition_t;
 
-typedef struct
-{
+typedef struct {
     worker_state_e  state;
     struct pollfd  *pfds;
     size_t          pfds_len;
@@ -120,7 +119,7 @@ void worker_sm_init(worker_data_t *data, struct pollfd *pfds, size_t pfds_len)
 
 worker_event_e worker_state_polling(worker_data_t *data)
 {
-    int  poll_count;
+    int poll_count;
 
     poll_count = poll(data->pfds, data->pfds_len, -1);
     if (poll_count <= 0)
@@ -135,7 +134,6 @@ worker_event_e worker_state_polling(worker_data_t *data)
         return EVENT_SOCKET;
     }
 
-    poll_count--;
     if (poll_count <= 0)
         return EVENT_NONE;
 
@@ -198,6 +196,8 @@ void worker_sm_do_transition(worker_data_t  *data,
             data->state = transitions[i].to;
         }
     }
+
+    return;
 }
 
 int readline(uint8_t *buf, int maxlen)
