@@ -3,7 +3,7 @@ CFLAGS = -std=gnu99 -Wall -Wextra -Wpedantic -O0 -g3
 #LFLAGS = -lcurl
 
 TRGT = manager
-SRCS = manager.c
+SRCS = manager.c manager_sm.c
 OBJS = $(SRCS:.c=.o)
 
 .PHONY: all run clean re
