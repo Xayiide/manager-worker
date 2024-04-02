@@ -8,10 +8,10 @@
 
 #include <poll.h>       /* polling                       */
 
+#include "inc/manager.h"
 #include "inc/manager_sm.h"
 
 #define LISTENQUEUE 10
-#define MAX_CLIENTS 10
 
 
 void *get_in_addr(struct sockaddr *sa)
@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 {
     int           i;
     int           sockfd;
-    struct pollfd pfds[MAX_CLIENTS];
+    struct pollfd pfds[MAX_CLIENTS + 1];
 
     if (argc != 3) {
         fprintf(stderr, "usage: %s <name> <service>\n", argv[0]);
@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
 
     /* Inicializar todos los pfd como inutilizados */
-    for (i = 0; i < MAX_CLIENTS; i++)
+    for (i = 0; i < MAX_CLIENTS + 1; i++)
         pfds[i].fd = -1;
 
     /* Inicializamos el primer pfd para que sea el del servidor */

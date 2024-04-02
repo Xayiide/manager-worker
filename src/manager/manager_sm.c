@@ -1,13 +1,13 @@
 #include "inc/manager_sm.h"
+#include "inc/manager.h"
 
-#include <string.h>     /* strlen      */
-#include <stdio.h>      /* stidn       */
-#include <unistd.h>     /* close       */
-#include <poll.h>       /* polling     */
-#include <netinet/in.h> /* sockaddr_in */
-#include <arpa/inet.h>  /* inet_ntop   */
-#include <sys/socket.h> /* send        */
-
+#include <string.h>     /* strlen, memset */
+#include <stdio.h>      /* stidn          */
+#include <unistd.h>     /* close          */
+#include <poll.h>       /* polling        */
+#include <netinet/in.h> /* sockaddr_in    */
+#include <arpa/inet.h>  /* inet_ntop      */
+#include <sys/socket.h> /* send           */
 
 /* ********************************************************************** */
 #define NELEMS(x) ((sizeof (x)) / (sizeof ((x)[0])))
@@ -42,10 +42,18 @@ typedef struct {
 
 typedef struct {
     manager_state_e  state;
-    struct pollfd   *pfds;
+    struct pollfd    *pfds;
+    /* Por ahora siempre es MAX_CLIENTS + 1 */
     size_t           pfds_len;
-    int              fd_highest;
+    /* Número de conexiones activas, para pasarle a poll */
+    int              num_conns;
+    /* Guarda el siguiente cliente libre */
+    int              next_free_cln;
+    /* Array de clientes */
+    manager_conn_t   clients[MAX_CLIENTS];
+    /* Recepción de mensajes */
     char             msg_buf[1024];
+    /* fd del cliente que envía el mensaje a redistribuir */
     int              fd_sender;
 } manager_data_t;
 
@@ -62,6 +70,7 @@ static manager_event_e manager_state_srv_close (manager_data_t *data);
 static manager_event_e manager_state_cln_close (manager_data_t *data);
 static void            manager_sm_do_transition(manager_data_t *data,
                                                 manager_event_e event);
+static void            manager_next_free_cln   (manager_data_t *data);
 
 static void           *get_in_addr(struct sockaddr *sa);
 static int             create_msg(int fd, char *send_buf, char *buf, size_t len);
@@ -101,7 +110,7 @@ static const manager_transition_t transitions[] = {
     {STATE_CLN_CLOSE, EVENT_NONE, STATE_POLLING},
 };
 
-char *client_names[10 /* MAX_CLIENTS */ + 1] = {
+char *client_names[MAX_CLIENTS + 1] = {
     "server",
     "client 1",
     "client 2",
@@ -139,23 +148,33 @@ void manager_sm_run(struct pollfd *pfds, size_t pfds_len)
 
 void manager_sm_init(manager_data_t *data, struct pollfd *pfds, size_t pfds_len)
 {
-    data->state      = STATE_POLLING;
-    data->pfds       = pfds;
-    data->pfds_len   = pfds_len;
-    data->fd_highest = 0;
-    data->fd_sender  = -1;
+    int i;
+
+    data->state         = STATE_POLLING;
+    data->pfds          = pfds;
+    data->pfds_len      = pfds_len;
+    data->num_conns    = 0;
+    data->fd_sender     = -1;
+    data->next_free_cln = 0;
+    memset(data->clients, 0, sizeof(data->clients));
+
+    /* Asigna a cada cliente su pollfd correspondiente al array */
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        data->clients[i].pfd = &(data->pfds[i + 1]);
+    }
 
     return;
 }
 
 manager_event_e manager_state_polling(manager_data_t *data)
 {
-    int i;
-    int poll_count;
+    int            i;
+    int            poll_count;
+    struct pollfd* pfd_aux;
 
     printf("ESTADO POLLING\n");
 
-    poll_count = poll(data->pfds, data->fd_highest + 1, -1);
+    poll_count = poll(data->pfds, data->num_conns + 1, -1);
     if (poll_count <= 0)
         return EVENT_ERROR;
 
@@ -164,22 +183,78 @@ manager_event_e manager_state_polling(manager_data_t *data)
         return EVENT_SERVER; /* -> STATE_ACCEPT */
     }
 
-    for (i = 1; i <= data->fd_highest; i++) {
+    /* Pasar por todos los pfds (TODO: Mejorar esto) y comprobar si hay
+     * eventos en ellos */
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        pfd_aux = data->clients[i].pfd;
+        if (pfd_aux->fd < 0)
+            continue;
+
+        if (pfd_aux->revents & (POLLIN | POLLERR)) {
+            /* Leer el fd correspondiente y recibir el mensaje enviado */
+            data->fd_sender = pfd_aux->fd;
+            return EVENT_CLIENT; /* -> STATE_RECV */
+        }
+    }
+
+#if 0
+    for (i = 1; i <= (int) data->pfds_len; i++) {
         /* Ignora fds a -1 */
         if (data->pfds[i].fd < 0)
             continue;
 
+        /* Comprueba si ha habido eventos en el fd */
         if (data->pfds[i].revents & (POLLIN | POLLERR)) {
             /* Lee el fd correspondiente */
             data->fd_sender = data->pfds[i].fd;
             return EVENT_CLIENT; /* -> STATE_RECV */
         }
     }
+#endif
 
     return EVENT_ERROR;
 }
 
+
 manager_event_e manager_state_accept(manager_data_t *data)
+{
+    int       new_fd;
+    socklen_t sin_size;
+
+    printf("ESTADO ACCEPT\n");
+
+    sin_size = sizeof(data->clients[data->next_free_cln].saddr);
+    new_fd = accept(data->pfds[0].fd,
+            (struct sockaddr *) &(data->clients[data->next_free_cln].saddr),
+            &sin_size);
+    if (new_fd == -1) {
+        fprintf(stderr, "accept.\n");
+        return EVENT_ERROR;
+    }
+
+    data->clients[data->next_free_cln].pfd->fd     = new_fd;
+    data->clients[data->next_free_cln].pfd->events = POLLIN;
+    data->num_conns++;
+
+    inet_ntop(data->clients[data->next_free_cln].saddr.sin_family,
+              get_in_addr((struct sockaddr *)
+                          &(data->clients[data->next_free_cln].saddr)),
+              data->clients[data->next_free_cln].ip_str,
+              INET6_ADDRSTRLEN);
+    data->clients[data->next_free_cln].cln_port =
+            ntohs(data->clients[data->next_free_cln].saddr.sin_port);
+
+    printf("Nueva conexión de %s:%d\n",
+        data->clients[data->next_free_cln].ip_str,
+        data->clients[data->next_free_cln].cln_port);
+
+    manager_next_free_cln(data);
+
+    return EVENT_NONE;
+}
+
+
+manager_event_e manager_state_old_accept(manager_data_t *data)
 {
     int             i;
     int             new_fd;
@@ -202,14 +277,14 @@ manager_event_e manager_state_accept(manager_data_t *data)
     printf("server: got connection from %s\n", s);
 
     /* Encuentro el primer pfd inutilizado y lo utilizo */
-    for (i = 0; i < 10 /* MAX_CLIENTS */; i++) {
+    for (i = 0; i < MAX_CLIENTS; i++) {
         if (data->pfds[i].fd < 0) {
             data->pfds[i].fd = new_fd;
             break;
         }
     }
 
-    if (i == 10 /* MAX_CLIENTS */) {
+    if (i == MAX_CLIENTS) {
         fprintf(stderr, "Demasiados clientes\n");
         return EVENT_ERROR;
     }
@@ -217,8 +292,8 @@ manager_event_e manager_state_accept(manager_data_t *data)
     /* Marcar el nuevo fd como escuchando en input */
     data->pfds[i].events = POLLIN;
 
-    if (i > data->fd_highest)
-        data->fd_highest = i;
+    if (i > data->num_conns)
+        data->num_conns = i;
 
     return EVENT_NONE;
 }
@@ -261,7 +336,7 @@ manager_event_e manager_state_bcast(manager_data_t *data)
 
     /* Reenvía el mensaje a todos los que hay en
      * data->pfds excepto al server y a sí mismo */
-    for (i = 1; i <= data->fd_highest; i++) {
+    for (i = 1; i <= data->num_conns; i++) {
         if (data->pfds[i].fd != data->fd_sender) {
             nbytes = send(data->pfds[i].fd, data->msg_buf, send_buf_len, 0);
             if (nbytes == -1) {
@@ -286,10 +361,11 @@ manager_event_e manager_state_cln_close(manager_data_t *data)
         if (data->pfds[i].fd == data->fd_sender) {
             data->pfds[i].fd = -1;
             close(data->pfds[i].fd);
+            data->num_conns--;
             found = 1;
         }
         i++;
-    } while ((found == 0) && (i < 10 /* MAX_CLIENTS */));
+    } while ((found == 0) && (i < MAX_CLIENTS));
 
     if (found == 0) {
         fprintf(stderr, "No se ha podido cerrar el fd %d.\n", data->fd_sender);
@@ -304,7 +380,7 @@ manager_event_e manager_state_srv_close(manager_data_t *data)
     printf("ESTADO CLOSE SERVER\n");
     int i;
 
-    for (i = 0; i < (int) data->fd_highest; i++) {
+    for (i = 0; i < (int) data->num_conns; i++) {
         close(data->pfds[i].fd);
     }
 
@@ -326,6 +402,23 @@ void manager_sm_do_transition(manager_data_t  *data,
 
     return;
 }
+
+void manager_next_free_cln(manager_data_t *data)
+{
+    int i;
+    struct pollfd *pfd;
+
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        pfd = data->clients[i].pfd;
+        if (pfd->fd == -1) {
+            data->next_free_cln = i;
+            break;
+        }
+    }
+
+    return;
+}
+
 
 int create_msg(int fd, char *send_buf, char *buf, size_t len)
 {
