@@ -73,7 +73,7 @@ static void            manager_sm_do_transition(manager_data_t *data,
 static void            manager_next_free_cln   (manager_data_t *data);
 
 static void           *get_in_addr(struct sockaddr *sa);
-static int             create_msg(int fd, char *send_buf, char *buf, size_t len);
+static size_t          create_msg(int fd, char *send_buf, char *buf, size_t len);
 
 /* manager_sm_cb: tipo nuevo. Puntero a función que como parámetro toma un
  * puntero a struct manager_data_t y devuelve enum manager_event_t */
@@ -161,6 +161,8 @@ void manager_sm_init(manager_data_t *data, struct pollfd *pfds, size_t pfds_len)
     /* Asigna a cada cliente su pollfd correspondiente al array */
     for (i = 0; i < MAX_CLIENTS; i++) {
         data->clients[i].pfd = &(data->pfds[i + 1]);
+        snprintf(data->clients[i].cln_name, CLN_NAME_MAXLEN,
+                 "[client %d]", i + 1);
     }
 
     return;
@@ -197,103 +199,41 @@ manager_event_e manager_state_polling(manager_data_t *data)
         }
     }
 
-#if 0
-    for (i = 1; i <= (int) data->pfds_len; i++) {
-        /* Ignora fds a -1 */
-        if (data->pfds[i].fd < 0)
-            continue;
-
-        /* Comprueba si ha habido eventos en el fd */
-        if (data->pfds[i].revents & (POLLIN | POLLERR)) {
-            /* Lee el fd correspondiente */
-            data->fd_sender = data->pfds[i].fd;
-            return EVENT_CLIENT; /* -> STATE_RECV */
-        }
-    }
-#endif
-
     return EVENT_ERROR;
 }
 
 
 manager_event_e manager_state_accept(manager_data_t *data)
 {
-    int       new_fd;
-    socklen_t sin_size;
+    int             new_fd;
+    socklen_t       sin_size;
+    manager_conn_t *client;
 
     printf("ESTADO ACCEPT\n");
 
-    sin_size = sizeof(data->clients[data->next_free_cln].saddr);
+    client = &(data->clients[data->next_free_cln]);
+
+    sin_size = sizeof(client->saddr);
     new_fd = accept(data->pfds[0].fd,
-            (struct sockaddr *) &(data->clients[data->next_free_cln].saddr),
+            (struct sockaddr *) &(client->saddr),
             &sin_size);
     if (new_fd == -1) {
         fprintf(stderr, "accept.\n");
         return EVENT_ERROR;
     }
 
-    data->clients[data->next_free_cln].pfd->fd     = new_fd;
-    data->clients[data->next_free_cln].pfd->events = POLLIN;
+    client->pfd->fd     = new_fd;
+    client->pfd->events = POLLIN;
     data->num_conns++;
 
-    inet_ntop(data->clients[data->next_free_cln].saddr.sin_family,
-              get_in_addr((struct sockaddr *)
-                          &(data->clients[data->next_free_cln].saddr)),
-              data->clients[data->next_free_cln].ip_str,
-              INET6_ADDRSTRLEN);
-    data->clients[data->next_free_cln].cln_port =
-            ntohs(data->clients[data->next_free_cln].saddr.sin_port);
+    inet_ntop(client->saddr.sin_family,
+              get_in_addr((struct sockaddr *) &(client->saddr)),
+              client->ip_str, INET6_ADDRSTRLEN);
+    client->cln_port = ntohs(client->saddr.sin_port);
 
-    printf("Nueva conexión de %s:%d\n",
-        data->clients[data->next_free_cln].ip_str,
-        data->clients[data->next_free_cln].cln_port);
+    printf("Nueva conexión de %s:%d\n", client->ip_str, client->cln_port);
 
     manager_next_free_cln(data);
-
-    return EVENT_NONE;
-}
-
-
-manager_event_e manager_state_old_accept(manager_data_t *data)
-{
-    int             i;
-    int             new_fd;
-    struct sockaddr their_addr;
-    socklen_t       sin_size = sizeof(their_addr);
-    char            s[INET6_ADDRSTRLEN];
-
-    printf("ESTADO ACCEPT\n");
-
-    new_fd = accept(data->pfds[0].fd, &their_addr, &sin_size);
-    if (new_fd == -1) {
-        fprintf(stderr, "accept.\n");
-        return EVENT_ERROR;
-    }
-
-    inet_ntop(their_addr.sa_family,
-              get_in_addr((struct sockaddr *) &their_addr),
-              s, sizeof(s));
-
-    printf("server: got connection from %s\n", s);
-
-    /* Encuentro el primer pfd inutilizado y lo utilizo */
-    for (i = 0; i < MAX_CLIENTS; i++) {
-        if (data->pfds[i].fd < 0) {
-            data->pfds[i].fd = new_fd;
-            break;
-        }
-    }
-
-    if (i == MAX_CLIENTS) {
-        fprintf(stderr, "Demasiados clientes\n");
-        return EVENT_ERROR;
-    }
-
-    /* Marcar el nuevo fd como escuchando en input */
-    data->pfds[i].events = POLLIN;
-
-    if (i > data->num_conns)
-        data->num_conns = i;
 
     return EVENT_NONE;
 }
@@ -305,7 +245,7 @@ manager_event_e manager_state_recv(manager_data_t *data)
     printf("ESTADO RECV\n");
 
     memset(buf, 0, 1024);
-    nbytes = recv(data->fd_sender, buf, 1024, 0);
+    nbytes = (int) recv(data->fd_sender, buf, 1024, 0);
 
     if (nbytes <= 0) {
         if (nbytes < 0) {
@@ -326,9 +266,9 @@ manager_event_e manager_state_recv(manager_data_t *data)
 
 manager_event_e manager_state_bcast(manager_data_t *data)
 {
-    int i;
-    int nbytes;
-    int send_buf_len;
+    int    i;
+    int    nbytes;
+    size_t send_buf_len;
 
     printf("ESTADO BCAST\n");
 
@@ -338,7 +278,7 @@ manager_event_e manager_state_bcast(manager_data_t *data)
      * data->pfds excepto al server y a sí mismo */
     for (i = 1; i <= data->num_conns; i++) {
         if (data->pfds[i].fd != data->fd_sender) {
-            nbytes = send(data->pfds[i].fd, data->msg_buf, send_buf_len, 0);
+            nbytes = (int) send(data->pfds[i].fd, data->msg_buf, send_buf_len, 0);
             if (nbytes == -1) {
                 fprintf(stderr, "error bcasting to fd %d.\n", data->pfds[i].fd);
                 continue; /* TODO: ¿Qué hacer aquí? */
@@ -420,11 +360,11 @@ void manager_next_free_cln(manager_data_t *data)
 }
 
 
-int create_msg(int fd, char *send_buf, char *buf, size_t len)
+size_t create_msg(int fd, char *send_buf, char *buf, size_t len)
 {
-    int pos       = 0;
-    int name_len  = 0;
-    int total_len = 0;
+    size_t pos       = 0;
+    size_t name_len  = 0;
+    size_t total_len = 0;
 
     name_len = strlen(client_names[fd]);
 
@@ -440,7 +380,7 @@ int create_msg(int fd, char *send_buf, char *buf, size_t len)
 
     total_len = strlen(send_buf);
 
-    return total_len;
+    return  total_len;
 }
 
 void *get_in_addr(struct sockaddr *sa)
