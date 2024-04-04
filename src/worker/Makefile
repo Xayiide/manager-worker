@@ -1,5 +1,7 @@
 CC     = gcc
-CFLAGS = -std=gnu99 -Wall -Wextra -Wpedantic -O0 -g3 
+CFLAGS = -std=gnu99 -Wall -Wextra -Wpedantic -Wconversion \
+	 -Wno-sign-conversion -Wdouble-promotion -Wno-unused-parameter \
+	 -Wno-unused-function -O0 -g3 
 #IFLAGS = -I../include
 
 TRGT = worker

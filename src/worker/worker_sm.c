@@ -57,7 +57,7 @@ static worker_event_e worker_state_close     (worker_data_t  *data);
 static void           worker_sm_do_transition(worker_data_t  *data,
                                               worker_event_e  event);
 
-static int readline(uint8_t *buf, int maxlen);
+static size_t readline(uint8_t *buf, int maxlen);
 
 /* worker_sm_cb: tipo nuevo. Puntero a función que como parámetro toma un
  * puntero a struct worker_data_t y devuelve un enum worker_event_t */
@@ -139,7 +139,7 @@ worker_event_e worker_state_polling(worker_data_t *data)
 
 worker_event_e worker_state_sendmsg(worker_data_t *data)
 {
-    int     nbytes;
+    ssize_t nbytes;
     uint8_t stdin_buf[1024] = {0}; /* evitar chars basura antes del print */
 
     printf("ESTADO SENDMSG\n");
@@ -156,8 +156,8 @@ worker_event_e worker_state_sendmsg(worker_data_t *data)
 
 worker_event_e worker_state_recvmsg(worker_data_t *data)
 {
-    int  nbytes;
-    char recv_buf[1024] = {0}; /* evitar chars basura antes del print */
+    ssize_t nbytes;
+    char    recv_buf[1024] = {0}; /* evitar chars basura antes del print */
 
     printf("ESTADO RECVMSG\n");
 
@@ -197,7 +197,7 @@ void worker_sm_do_transition(worker_data_t  *data,
     return;
 }
 
-int readline(uint8_t *buf, int maxlen)
+size_t readline(uint8_t *buf, int maxlen)
 {
     fgets((char *) buf, maxlen, stdin);
 
