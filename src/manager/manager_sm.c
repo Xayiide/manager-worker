@@ -18,6 +18,14 @@
 /* *********************** Declaración de tipos ************************* */
 /* ********************************************************************** */
 
+typedef struct {
+    struct sockaddr_in  saddr;
+    char                ip_str[INET6_ADDRSTRLEN];
+    uint16_t            cln_port;
+    char                cln_name[CLN_NAME_MAXLEN];
+    struct pollfd      *pfd;
+} manager_conn_t;
+
 typedef enum {
     STATE_POLLING,
     STATE_ACCEPT,
@@ -266,9 +274,10 @@ manager_event_e manager_state_recv(manager_data_t *data)
 
 manager_event_e manager_state_bcast(manager_data_t *data)
 {
-    int    i;
-    int    nbytes;
-    size_t send_buf_len;
+    int            i;
+    ssize_t        nbytes;
+    size_t         send_buf_len;
+    struct pollfd *pfd_aux;
 
     printf("ESTADO BCAST\n");
 
@@ -276,11 +285,12 @@ manager_event_e manager_state_bcast(manager_data_t *data)
 
     /* Reenvía el mensaje a todos los que hay en
      * data->pfds excepto al server y a sí mismo */
-    for (i = 1; i <= data->num_conns; i++) {
-        if (data->pfds[i].fd != data->fd_sender) {
-            nbytes = (int) send(data->pfds[i].fd, data->msg_buf, send_buf_len, 0);
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        pfd_aux = data->clients[i].pfd;
+        if ((pfd_aux->fd != data->fd_sender) && (pfd_aux->fd != -1)) {
+            nbytes = send(pfd_aux->fd, data->msg_buf, send_buf_len, 0);
             if (nbytes == -1) {
-                fprintf(stderr, "error bcasting to fd %d.\n", data->pfds[i].fd);
+                fprintf(stderr, "error bcasting to fd %d.\n", pfd_aux->fd);
                 continue; /* TODO: ¿Qué hacer aquí? */
             }
         }
