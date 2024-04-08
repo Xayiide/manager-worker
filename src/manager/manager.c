@@ -91,8 +91,11 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
 
     /* Inicializar todos los pfd como inutilizados */
-    for (i = 0; i < MAX_CLIENTS + 1; i++)
-        pfds[i].fd = -1;
+    for (i = 0; i < MAX_CLIENTS + 1; i++) {
+        pfds[i].fd      = -1;
+        pfds[i].events  = 0;
+        pfds[i].revents = 0;
+    }
 
     /* Inicializamos el primer pfd para que sea el del servidor */
     pfds[0].fd     = sockfd;
