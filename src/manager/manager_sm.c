@@ -3,7 +3,7 @@
 
 #include <string.h>     /* strlen, memset */
 #include <stdio.h>      /* stidn          */
-#include <unistd.h>     /* close          */
+#include <unistd.h>     /* close, usleep  */
 #include <poll.h>       /* polling        */
 #include <netinet/in.h> /* sockaddr_in    */
 #include <arpa/inet.h>  /* inet_ntop      */
@@ -176,7 +176,7 @@ manager_event_e manager_state_polling(manager_data_t *data)
 
     printf("ESTADO POLLING\n");
 
-    poll_count = poll(data->pfds, data->num_conns + 1, -1);
+    poll_count = poll(data->pfds, MAX_CLIENTS, -1);
     if (poll_count <= 0)
         return EVENT_ERROR;
 

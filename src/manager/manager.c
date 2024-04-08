@@ -39,7 +39,7 @@ int manager_init_connections(const char *name, const char *service)
     if (ret_tmp != 0) {
         fprintf(stderr, "getaddrinfo: %s\n",
                 gai_strerror(ret_tmp));
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
     /* getaddrinfo nos rellena structs con información sobre el destino al que
@@ -47,20 +47,20 @@ int manager_init_connections(const char *name, const char *service)
     sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (sockfd == -1) {
         fprintf(stderr, "socket\n");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
     ret_tmp = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
     if (ret_tmp == -1) {
         fprintf(stderr, "setsockopt\n");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
     ret_tmp = bind(sockfd, res->ai_addr, res->ai_addrlen);
     if (ret_tmp == -1) {
         close(sockfd);
         fprintf(stderr, "bind\n");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
     freeaddrinfo(res);
@@ -68,7 +68,7 @@ int manager_init_connections(const char *name, const char *service)
     ret_tmp = listen(sockfd, LISTENQUEUE);
     if (ret_tmp == -1) {
         fprintf(stderr, "listen\n");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
     return sockfd;
@@ -82,13 +82,13 @@ int main(int argc, char *argv[])
 
     if (argc != 3) {
         fprintf(stderr, "usage: %s <name> <service>\n", argv[0]);
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
     printf("[Manager]\n");
     sockfd = manager_init_connections(argv[1], argv[2]);
     if (sockfd == -1)
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
 
     /* Inicializar todos los pfd como inutilizados */
     for (i = 0; i < MAX_CLIENTS + 1; i++)
