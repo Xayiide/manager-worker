@@ -142,8 +142,6 @@ worker_event_e worker_state_sendmsg(worker_data_t *data)
     ssize_t nbytes;
     uint8_t stdin_buf[1024] = {0}; /* evitar chars basura antes del print */
 
-    printf("ESTADO SENDMSG\n");
-
     nbytes = readline(stdin_buf, 1024);
     nbytes = send(data->pfds[1].fd, stdin_buf, nbytes, 0);
     if (nbytes == -1) {
@@ -158,8 +156,6 @@ worker_event_e worker_state_recvmsg(worker_data_t *data)
 {
     ssize_t nbytes;
     char    recv_buf[1024] = {0}; /* evitar chars basura antes del print */
-
-    printf("ESTADO RECVMSG\n");
 
     nbytes = recv(data->pfds[1].fd, recv_buf, 1024, 0);
     if (nbytes <= 0) {
@@ -177,7 +173,6 @@ worker_event_e worker_state_recvmsg(worker_data_t *data)
 
 worker_event_e worker_state_close(worker_data_t *data)
 {
-    printf("ESTADO CLOSED\n");
     close(data->pfds[1].fd);
     return EVENT_NONE;
 }

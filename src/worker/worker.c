@@ -65,15 +65,27 @@ int worker_init_connections(const char *name, const char *service)
     return sockfd;
 }
 
+void worker_send_name(int fd, const char *client_name)
+{
+    ssize_t nbytes;
 
+    nbytes = send(fd, client_name, strlen(client_name), 0);
+    if (nbytes == -1) {
+        fprintf(stderr, "worker: error enviando el nombre.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return;
+}
 
 int main (int argc, char *argv[])
 {
     int           sockfd;
     struct pollfd pfds[2]; /* stdin y el socket */
 
-    if (argc != 3) {
-        fprintf(stderr, "usage: %s <server name> <server port>\n", argv[0]);
+    if (argc != 4) {
+        fprintf(stderr, "usage: %s <server name> <server port> <client name>\n",
+            argv[0]);
         return EXIT_FAILURE;
     }
 
@@ -86,7 +98,8 @@ int main (int argc, char *argv[])
 
     pfds[1].fd     = sockfd;
     pfds[1].events = POLLIN;
-    
+
+    worker_send_name(sockfd, argv[3]);
 
     worker_sm_run(pfds, 2);
 
