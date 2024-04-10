@@ -182,8 +182,6 @@ manager_event_e manager_state_polling(manager_data_t *data)
     int            poll_count;
     struct pollfd* pfd_aux;
 
-    printf("ESTADO POLLING\n");
-
     poll_count = poll(data->pfds, MAX_CLIENTS, -1);
     if (poll_count <= 0)
         return EVENT_ERROR;
@@ -207,7 +205,7 @@ manager_event_e manager_state_polling(manager_data_t *data)
         }
     }
 
-    return EVENT_ERROR;
+    return EVENT_NONE;
 }
 
 
@@ -216,8 +214,6 @@ manager_event_e manager_state_accept(manager_data_t *data)
     int             new_fd;
     socklen_t       sin_size;
     manager_conn_t *client;
-
-    printf("ESTADO ACCEPT\n");
 
     client = &(data->clients[data->next_free_cln]);
 
@@ -250,7 +246,6 @@ manager_event_e manager_state_recv(manager_data_t *data)
 {
     int nbytes;
     char buf[1024];
-    printf("ESTADO RECV\n");
 
     memset(buf, 0, 1024);
     nbytes = (int) recv(data->fd_sender, buf, 1024, 0);
@@ -279,8 +274,6 @@ manager_event_e manager_state_bcast(manager_data_t *data)
     size_t         send_buf_len;
     struct pollfd *pfd_aux;
 
-    printf("ESTADO BCAST\n");
-
     send_buf_len = strlen(data->msg_buf);
 
     /* Reenvía el mensaje a todos los que hay en
@@ -304,8 +297,6 @@ manager_event_e manager_state_cln_close(manager_data_t *data)
     int i     = 0;
     int found = 0;
 
-    printf("ESTADO CLOSE CLIENT\n");
-
     /* Busca el fd del cliente, lo cierra y lo marca como -1 */
     do {
         if (data->pfds[i].fd == data->fd_sender) {
@@ -327,7 +318,6 @@ manager_event_e manager_state_cln_close(manager_data_t *data)
 
 manager_event_e manager_state_srv_close(manager_data_t *data)
 {
-    printf("ESTADO CLOSE SERVER\n");
     int i;
 
     for (i = 0; i < (int) data->num_conns; i++) {

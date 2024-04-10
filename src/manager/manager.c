@@ -71,7 +71,7 @@ int manager_init_connections(const char *name, const char *service)
         exit(EXIT_FAILURE);
     }
 
-    return sockfd;
+    return sockfd; /* No puede ser -1 */
 }
 
 int main(int argc, char *argv[])
@@ -87,8 +87,6 @@ int main(int argc, char *argv[])
 
     printf("[Manager]\n");
     sockfd = manager_init_connections(argv[1], argv[2]);
-    if (sockfd == -1)
-        exit(EXIT_FAILURE);
 
     /* Inicializar todos los pfd como inutilizados */
     for (i = 0; i < MAX_CLIENTS + 1; i++) {
@@ -101,8 +99,8 @@ int main(int argc, char *argv[])
     pfds[0].fd     = sockfd;
     pfds[0].events = POLLIN;
 
+    printf("Escuchando en %s:%s\n", argv[1], argv[2]);
 
-    printf("Waiting for connections...\n");
     manager_sm_run(pfds, MAX_CLIENTS);
 
     return EXIT_SUCCESS;
