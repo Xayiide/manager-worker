@@ -17,7 +17,7 @@ $(TRGT): $(SRCS)
 	$(CC) $(CFLAGS) $(OBJS) -o $@
 
 run: all
-	@./$(TRGT) localhost 6000
+	@echo "Opción no disponible"
 
 clean:
 	@rm -f $(TRGT) $(OBJS)
